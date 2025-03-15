@@ -32,7 +32,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "https://jtxviewer.onrender.com:5173",
+    origin: "https://jtxviewer.onrender.com",
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -48,11 +48,19 @@ io.on('connection', (socket) => {
 });
 
 app.use(cors({
-  origin: 'https://jtxviewer.onrender.com:5173',
+  origin: 'https://jtxviewer.onrender.com',
   methods: ['GET', 'POST'],
   credentials: true
 }));
 app.use(bodyParser.json());
+
+// Serve static files from the dist directory
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Handle SPA routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
 // Get all calls
 app.get('/calls', (req, res) => {
