@@ -17,6 +17,7 @@ const db = new sqlite3.Database(path.join('/data', 'calls.db'), (err) => {
         caller_phone TEXT NOT NULL,
         sentiment TEXT NOT NULL,
         summary TEXT NOT NULL,
+        recording_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -45,7 +46,8 @@ const dbOperations = {
                 phone: row.caller_phone
               },
               sentiment: row.sentiment,
-              summary: row.summary
+              summary: row.summary,
+              recording_url: row.recording_url
             }));
             resolve(calls);
           }
@@ -57,11 +59,11 @@ const dbOperations = {
   // Save a new call
   saveCall: (call) => {
     return new Promise((resolve, reject) => {
-      const { id, timestamp, transcript, caller, sentiment, summary } = call;
+      const { id, timestamp, transcript, caller, sentiment, summary, recording_url } = call;
       db.run(
-        `INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, timestamp, transcript, caller.name, caller.phone, sentiment, summary],
+        `INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, timestamp, transcript, caller.name, caller.phone, sentiment, summary, recording_url],
         (err) => {
           if (err) {
             reject(err);

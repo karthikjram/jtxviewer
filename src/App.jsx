@@ -1,15 +1,78 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { format } from 'date-fns';
-import { ChartBarIcon, ChatBubbleLeftIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ChartBarIcon, ChatBubbleLeftIcon, ClockIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
 
 // Components
 const CallCard = ({ call }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const audioRef = useRef(null);
+
   const sentimentColor = {
     positive: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
     neutral: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
     negative: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
   }[call.sentiment];
+
+  useEffect(() => {
+    const fetchAudio = async () => {
+      try {
+        const response = await fetch(`https://jtxviewer.onrender.com/calls/${call.id}/recording`);
+        if (!response.ok) throw new Error('Failed to fetch recording');
+        const data = await response.json();
+        setAudioUrl(data.url);
+      } catch (error) {
+        console.error('Error fetching audio:', error);
+      }
+    };
+    fetchAudio();
+  }, [call.id]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.addEventListener('timeupdate', () => {
+        setCurrentTime(audioRef.current.currentTime);
+      });
+      audioRef.current.addEventListener('loadedmetadata', () => {
+        setDuration(audioRef.current.duration);
+      });
+      audioRef.current.addEventListener('ended', () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      });
+    }
+  }, [audioUrl]);
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const formatTime = (time) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleTimelineClick = (e) => {
+    const timeline = e.currentTarget;
+    const rect = timeline.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    const newTime = ratio * duration;
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
 
   return (
     <div className="card mb-4">
@@ -18,6 +81,38 @@ const CallCard = ({ call }) => {
           <ChatBubbleLeftIcon className="h-5 w-5 text-primary-600" />
           <h3 className="text-lg font-semibold">Call Transcript</h3>
         </div>
+        {audioUrl && (
+          <div className="flex items-center space-x-4 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1">
+            <button
+              onClick={togglePlay}
+              className="text-primary-600 hover:text-primary-700 focus:outline-none"
+            >
+              {isPlaying ? (
+                <PauseIcon className="h-6 w-6" />
+              ) : (
+                <PlayIcon className="h-6 w-6" />
+              )}
+            </button>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {formatTime(currentTime)}
+              </span>
+              <div
+                className="w-32 h-1 bg-gray-300 dark:bg-gray-600 rounded cursor-pointer"
+                onClick={handleTimelineClick}
+              >
+                <div
+                  className="h-full bg-primary-600 rounded"
+                  style={{ width: `${(currentTime / duration) * 100}%` }}
+                />
+              </div>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {formatTime(duration)}
+              </span>
+            </div>
+            <audio ref={audioRef} src={audioUrl} preload="metadata" />
+          </div>
+        )}
         <div className="flex items-center space-x-2 text-sm text-gray-500">
           <ClockIcon className="h-4 w-4" />
           <time>{format(new Date(call.timestamp), 'PPpp')}</time>

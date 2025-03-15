@@ -41,6 +41,7 @@ function initializeDatabase() {
           caller_phone TEXT NOT NULL,
           sentiment TEXT NOT NULL,
           summary TEXT NOT NULL,
+          recording_url TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `, (err) => {
@@ -95,6 +96,32 @@ app.use(cors({
 app.use(bodyParser.json());
 
 // API Routes
+
+// Get call recording
+app.get('/calls/:callId/recording', async (req, res) => {
+  const { callId } = req.params;
+  
+  try {
+    const options = {
+      method: 'GET',
+      headers: {
+        'X-API-Key': process.env.ULTRAVOX_API_KEY
+      }
+    };
+
+    const response = await fetch(`https://api.ultravox.ai/api/calls/${callId}/recording`, options);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch recording: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching recording:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all calls
 app.get('/calls', (req, res) => {
   console.log('GET /calls - Request received');
@@ -146,7 +173,8 @@ app.get('/calls', (req, res) => {
             phone: row.caller_phone
           },
           sentiment: row.sentiment,
-          summary: row.summary
+          summary: row.summary,
+          recording_url: row.recording_url
         };
         return formattedCall;
       });
@@ -176,6 +204,26 @@ app.post('/webhook', async (req, res) => {
   
   if (event === 'call.ended') {
     console.log('Call ended:', call);
+
+    // Fetch recording URL from Ultravox API
+    let recordingUrl = null;
+    try {
+      const options = {
+        method: 'GET',
+        headers: {
+          'X-API-Key': process.env.ULTRAVOX_API_KEY
+        }
+      };
+      const recordingResponse = await fetch(`https://api.ultravox.ai/api/calls/${call.callId}/recording`, options);
+      if (recordingResponse.ok) {
+        const recordingData = await recordingResponse.json();
+        recordingUrl = recordingData.url;
+      } else {
+        console.error('Failed to fetch recording URL:', recordingResponse.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching recording URL:', error);
+    }
     // Process the ended call data
 
     // Check if this call ID has already been processed
@@ -255,8 +303,8 @@ app.post('/webhook', async (req, res) => {
     try {
       console.log('Saving call to database:', callData);
       const stmt = db.prepare(`
-        INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -267,6 +315,7 @@ app.post('/webhook', async (req, res) => {
         callData.caller.phone,
         callData.sentiment,
         callData.summary,
+        recordingUrl,
         function(err) { // Using function to get 'this' context
           if (err) {
             console.error('Error inserting call:', err);
@@ -278,8 +327,14 @@ app.post('/webhook', async (req, res) => {
       
       stmt.finalize();
       
+      // Add recording URL to the emitted data
+      const callDataWithRecording = {
+        ...callData,
+        recording_url: recordingUrl
+      };
+      
       // Emit to all connected clients
-      io.emit('newCall', callData);
+      io.emit('newCall', callDataWithRecording);
       console.log('Emitted newCall event to all clients');
       
       res.status(200).json({ status: 'success' });
