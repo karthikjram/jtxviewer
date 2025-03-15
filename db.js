@@ -13,7 +13,7 @@ try {
   throw err;
 }
 
-// Set database path
+// Set database path and ensure it exists
 const dbPath = path.join(dataDir, 'calls.db');
 console.log('Using database path:', dbPath);
 
@@ -21,16 +21,18 @@ console.log('Using database path:', dbPath);
 const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, (err) => {
   if (err) {
     console.error('Error connecting to database:', err);
-  } else {
-    console.log('Connected to SQLite database');
-    
-    // Initialize database schema with proper error handling
-    db.serialize(() => {
-      // Drop existing table
+    throw err;
+  }
+  console.log('Connected to SQLite database');
+  
+  // Initialize database schema with proper error handling
+  db.serialize(() => {
+    try {
+      // Drop existing table if it exists
       db.run('DROP TABLE IF EXISTS calls', (err) => {
         if (err) {
           console.error('Error dropping table:', err);
-          throw err; // Throw error to stop initialization
+          throw err;
         }
         console.log('Dropped existing calls table');
       });
@@ -52,7 +54,7 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READW
       `, (err) => {
         if (err) {
           console.error('Error creating table:', err);
-          throw err; // Throw error to stop initialization
+          throw err;
         }
         console.log('Created calls table with new schema');
       });
@@ -65,22 +67,30 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READW
         }
         console.log('Created timestamp index');
       });
-    });
-  }
+    } catch (error) {
+      console.error('Error during database initialization:', error);
+      throw error;
+    }
+  });
 });
 
-// Database operations
+// Database operations with proper error handling and logging
 const dbOperations = {
   // Get all calls ordered by timestamp (newest first)
   getAllCalls: () => {
     return new Promise((resolve, reject) => {
+      console.log('Fetching all calls from database');
       db.all(
         `SELECT * FROM calls ORDER BY timestamp DESC`,
         [],
         (err, rows) => {
           if (err) {
+            console.error('Error fetching calls:', err);
             reject(err);
-          } else {
+            return;
+          }
+          
+          try {
             // Format the rows to match our application structure
             const calls = rows.map(row => ({
               id: row.id,
@@ -94,27 +104,35 @@ const dbOperations = {
               summary: row.summary,
               recording_url: row.recording_url
             }));
+            console.log(`Successfully fetched ${calls.length} calls`);
             resolve(calls);
+          } catch (formatError) {
+            console.error('Error formatting call data:', formatError);
+            reject(formatError);
           }
         }
       );
     });
   },
 
-  // Save a new call
+  // Save a new call with proper error handling
   saveCall: (call) => {
     return new Promise((resolve, reject) => {
+      console.log('Saving new call to database:', call.id);
       const { id, timestamp, transcript, caller, sentiment, summary, recording_url } = call;
+      
       db.run(
         `INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, timestamp, transcript, caller.name, caller.phone, sentiment, summary, recording_url],
-        (err) => {
+        function(err) {
           if (err) {
+            console.error('Error saving call:', err);
             reject(err);
-          } else {
-            resolve(call);
+            return;
           }
+          console.log(`Successfully saved call with ID: ${id}`);
+          resolve(call);
         }
       );
     });

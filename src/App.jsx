@@ -41,9 +41,10 @@ const CallCard = ({ call }) => {
         console.error('Audio error details:', {
           error: e.target.error,
           networkState: e.target.networkState,
-          readyState: e.target.readyState
+          readyState: e.target.readyState,
+          url: call.recording_url
         });
-        setAudioError('Failed to load audio recording');
+        setAudioError('Failed to load audio recording. Please try again.');
         setAudioLoaded(false);
         setIsPlaying(false);
       };
@@ -191,7 +192,11 @@ const CallCard = ({ call }) => {
                     preload="metadata"
                     crossOrigin="anonymous"
                   >
-                    <source src={call.recording_url} type="audio/wav" />
+                    <source 
+                      src={call.recording_url} 
+                      type="audio/wav"
+                    />
+                    Your browser does not support the audio element.
                   </audio>
                 </>
               )}

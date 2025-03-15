@@ -384,7 +384,7 @@ app.post('/webhook', async (req, res) => {
         callData.caller.phone,
         callData.sentiment,
         callData.summary,
-        recordingUrl,
+        callData.recording_url,
         function(err) { // Using function to get 'this' context
           if (err) {
             console.error('Error inserting call:', err);
@@ -396,14 +396,8 @@ app.post('/webhook', async (req, res) => {
       
       stmt.finalize();
       
-      // Add recording URL to the emitted data
-      const callDataWithRecording = {
-        ...callData,
-        recording_url: recordingUrl
-      };
-      
       // Emit to all connected clients
-      io.emit('newCall', callDataWithRecording);
+      io.emit('newCall', callData);
       console.log('Emitted newCall event to all clients');
       
       res.status(200).json({ status: 'success' });
