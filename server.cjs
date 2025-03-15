@@ -9,7 +9,7 @@ const fetch = require('node-fetch');
 require('dotenv').config();
 
 // Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
+const dataDir = path.join("/", 'data');
 if (!require('fs').existsSync(dataDir)) {
   require('fs').mkdirSync(dataDir);
 }
