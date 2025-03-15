@@ -126,11 +126,37 @@ app.post('/webhook', async (req, res) => {
     callData.timestamp = new Date().toISOString();
     callData.id = call.callId || 'call_' + Date.now();
     callData.sentiment = "Neutral";
-    callData.summary = call.summary;
+    
+    // Extract caller name from transcript if available
+    const nameMatch = call.shortSummary?.match(/My name is ([^.\n]+)/i);
+    const callerName = nameMatch ? nameMatch[1].trim() : 'Unknown Caller';
+    
     callData.caller = {
-      name: 'Unknown Caller',
-      phone: 'Unknown Number'
+      name: callerName,
+      phone: call.caller?.phoneNumber || 'Unknown Number'
     };
+    
+    // Clean up and format the transcript
+    const cleanTranscript = call.shortSummary
+      ?.replace('(New Call) Respond as if you are answering the phone.\n', '')
+      ?.trim() || 'No transcript available';
+    callData.transcript = cleanTranscript;
+    
+    // Generate a meaningful summary
+    const conversationLines = cleanTranscript.split('\n');
+    const summaryParts = [];
+    
+    if (callerName !== 'Unknown Caller') {
+      summaryParts.push(`Call with ${callerName}`);
+    }
+    
+    // Add first exchange to summary
+    if (conversationLines.length >= 2) {
+      const firstExchange = conversationLines.slice(0, 2).join(' → ');
+      summaryParts.push(firstExchange);
+    }
+    
+    callData.summary = summaryParts.join(' - ') || 'Call transcript';
     
     // Fetch messages from Ultravox API
     try {
