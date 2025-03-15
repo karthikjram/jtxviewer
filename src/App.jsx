@@ -8,7 +8,8 @@ const CallCard = ({ call }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioLoaded, setAudioLoaded] = useState(false);
+  const [audioError, setAudioError] = useState(null);
   const audioRef = useRef(null);
 
   const sentimentColor = {
@@ -18,33 +19,38 @@ const CallCard = ({ call }) => {
   }[call.sentiment];
 
   useEffect(() => {
-    const fetchAudio = async () => {
-      try {
-        const response = await fetch(`https://jtxviewer.onrender.com/calls/${call.id}/recording`);
-        if (!response.ok) throw new Error('Failed to fetch recording');
-        const data = await response.json();
-        setAudioUrl(data.url);
-      } catch (error) {
-        console.error('Error fetching audio:', error);
-      }
-    };
-    fetchAudio();
-  }, [call.id]);
-
-  useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.addEventListener('timeupdate', () => {
-        setCurrentTime(audioRef.current.currentTime);
-      });
-      audioRef.current.addEventListener('loadedmetadata', () => {
-        setDuration(audioRef.current.duration);
-      });
-      audioRef.current.addEventListener('ended', () => {
+      const audio = audioRef.current;
+
+      const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+      const onLoadedMetadata = () => {
+        setDuration(audio.duration);
+        setAudioLoaded(true);
+        setAudioError(null);
+      };
+      const onEnded = () => {
         setIsPlaying(false);
         setCurrentTime(0);
-      });
+      };
+      const onError = (e) => {
+        console.error('Audio error:', e);
+        setAudioError('Failed to load audio');
+        setAudioLoaded(false);
+      };
+
+      audio.addEventListener('timeupdate', onTimeUpdate);
+      audio.addEventListener('loadedmetadata', onLoadedMetadata);
+      audio.addEventListener('ended', onEnded);
+      audio.addEventListener('error', onError);
+
+      return () => {
+        audio.removeEventListener('timeupdate', onTimeUpdate);
+        audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+      };
     }
-  }, [audioUrl]);
+  }, [call.recording_url]);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -81,42 +87,60 @@ const CallCard = ({ call }) => {
           <ChatBubbleLeftIcon className="h-5 w-5 text-primary-600" />
           <h3 className="text-lg font-semibold">Call Transcript</h3>
         </div>
-        {audioUrl && (
-          <div className="flex items-center space-x-4 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1">
-            <button
-              onClick={togglePlay}
-              className="text-primary-600 hover:text-primary-700 focus:outline-none"
-            >
-              {isPlaying ? (
-                <PauseIcon className="h-6 w-6" />
+        <div className="flex items-center space-x-4">
+          {call.recording_url && !audioError ? (
+            <div className="flex items-center space-x-4 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1">
+              {!audioLoaded ? (
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    Loading audio...
+                  </span>
+                </div>
               ) : (
-                <PlayIcon className="h-6 w-6" />
+                <>
+                  <button
+                    onClick={togglePlay}
+                    className="text-primary-600 hover:text-primary-700 focus:outline-none"
+                  >
+                    {isPlaying ? (
+                      <PauseIcon className="h-6 w-6" />
+                    ) : (
+                      <PlayIcon className="h-6 w-6" />
+                    )}
+                  </button>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400 min-w-[40px]">
+                      {formatTime(currentTime)}
+                    </span>
+                    <div
+                      className="w-32 h-1 bg-gray-300 dark:bg-gray-600 rounded cursor-pointer relative"
+                      onClick={handleTimelineClick}
+                    >
+                      <div
+                        className="absolute top-0 left-0 h-full bg-primary-600 rounded transition-all duration-100"
+                        style={{ width: `${(currentTime / duration) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm text-gray-600 dark:text-gray-400 min-w-[40px]">
+                      {formatTime(duration)}
+                    </span>
+                  </div>
+                  <audio ref={audioRef} src={call.recording_url} preload="metadata" />
+                </>
               )}
-            </button>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                {formatTime(currentTime)}
-              </span>
-              <div
-                className="w-32 h-1 bg-gray-300 dark:bg-gray-600 rounded cursor-pointer"
-                onClick={handleTimelineClick}
-              >
-                <div
-                  className="h-full bg-primary-600 rounded"
-                  style={{ width: `${(currentTime / duration) * 100}%` }}
-                />
-              </div>
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                {formatTime(duration)}
-              </span>
             </div>
-            <audio ref={audioRef} src={audioUrl} preload="metadata" />
+          ) : audioError ? (
+            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-lg">
+              {audioError}
+            </div>
+          ) : null}
+          <div className="flex items-center space-x-2 text-sm text-gray-500">
+            <ClockIcon className="h-4 w-4" />
+            <time>{format(new Date(call.timestamp), 'PPpp')}</time>
           </div>
-        )}
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <ClockIcon className="h-4 w-4" />
-          <time>{format(new Date(call.timestamp), 'PPpp')}</time>
         </div>
+
       </div>
       
       <div className="caller-info px-4 py-2 bg-gray-50 dark:bg-gray-800 border-t border-b dark:border-gray-700">

@@ -23,7 +23,7 @@ console.log('Using database path:', dbPath);
 function initializeDatabase() {
   return new Promise((resolve, reject) => {
     console.log('Initializing database at:', dbPath);
-    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, (err) => {
+    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, async (err) => {
       if (err) {
         console.error('Error connecting to database:', err);
         reject(err);
@@ -31,28 +31,49 @@ function initializeDatabase() {
       }
       console.log('Connected to SQLite database');
       
-      // Create calls table if it doesn't exist
-      db.run(`
-        CREATE TABLE IF NOT EXISTS calls (
-          id TEXT PRIMARY KEY,
-          timestamp TEXT NOT NULL,
-          transcript TEXT NOT NULL,
-          caller_name TEXT NOT NULL,
-          caller_phone TEXT NOT NULL,
-          sentiment TEXT NOT NULL,
-          summary TEXT NOT NULL,
-          recording_url TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `, (err) => {
-        if (err) {
-          console.error('Error creating table:', err);
-          reject(err);
-          return;
-        }
-        console.log('Database table initialized');
+      try {
+        // Drop existing table if it exists
+        await new Promise((resolve, reject) => {
+          db.run('DROP TABLE IF EXISTS calls', (err) => {
+            if (err) {
+              console.error('Error dropping table:', err);
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        });
+
+        // Create calls table with updated schema
+        await new Promise((resolve, reject) => {
+          db.run(`
+            CREATE TABLE calls (
+              id TEXT PRIMARY KEY,
+              timestamp TEXT NOT NULL,
+              transcript TEXT NOT NULL,
+              caller_name TEXT NOT NULL,
+              caller_phone TEXT NOT NULL,
+              sentiment TEXT NOT NULL,
+              summary TEXT NOT NULL,
+              recording_url TEXT,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `, (err) => {
+            if (err) {
+              console.error('Error creating table:', err);
+              reject(err);
+              return;
+            }
+            console.log('Database table created with new schema');
+            resolve();
+          });
+        });
+
         resolve(db);
-      });
+      } catch (error) {
+        console.error('Error initializing database:', error);
+        reject(error);
+      }
     });
   });
 }
@@ -114,8 +135,11 @@ app.get('/calls/:callId/recording', async (req, res) => {
       throw new Error(`Failed to fetch recording: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    res.json(data);
+    // Set audio content type
+    res.setHeader('Content-Type', 'audio/wav');
+    
+    // Pipe the response directly
+    response.body.pipe(res);
   } catch (error) {
     console.error('Error fetching recording:', error);
     res.status(500).json({ error: error.message });
@@ -205,25 +229,8 @@ app.post('/webhook', async (req, res) => {
   if (event === 'call.ended') {
     console.log('Call ended:', call);
 
-    // Fetch recording URL from Ultravox API
-    let recordingUrl = null;
-    try {
-      const options = {
-        method: 'GET',
-        headers: {
-          'X-API-Key': process.env.ULTRAVOX_API_KEY
-        }
-      };
-      const recordingResponse = await fetch(`https://api.ultravox.ai/api/calls/${call.callId}/recording`, options);
-      if (recordingResponse.ok) {
-        const recordingData = await recordingResponse.json();
-        recordingUrl = recordingData.url;
-      } else {
-        console.error('Failed to fetch recording URL:', recordingResponse.statusText);
-      }
-    } catch (error) {
-      console.error('Error fetching recording URL:', error);
-    }
+    // Set recording URL
+    const recordingUrl = `https://jtxviewer.onrender.com/calls/${call.callId}/recording`;
     // Process the ended call data
 
     // Check if this call ID has already been processed
@@ -232,10 +239,12 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200); // Early return for duplicates
     }
 
-    const callData = {}
-    callData.timestamp = new Date().toISOString();
-    callData.id = call.callId || 'call_' + Date.now();
-    callData.sentiment = "Neutral";
+    const callData = {
+      timestamp: new Date().toISOString(),
+      id: call.callId || 'call_' + Date.now(),
+      sentiment: "Neutral",
+      recording_url: `/calls/${call.callId}/recording`
+    };
     
     // Extract caller name from transcript if available
     const nameMatch = call.shortSummary?.match(/My name is ([^.\n]+)/i);

@@ -1,26 +1,51 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+// Use Render's persistent volume if available, otherwise use local path
+const dataDir = process.env.RENDER_VOLUME_PATH || path.join(__dirname, 'data');
+if (!require('fs').existsSync(dataDir)) {
+  require('fs').mkdirSync(dataDir, { recursive: true });
+}
+
 // Create a new database connection
-const db = new sqlite3.Database(path.join('/data', 'calls.db'), (err) => {
+const dbPath = path.join(dataDir, 'calls.db');
+console.log('Using database path:', dbPath);
+
+const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error connecting to database:', err);
   } else {
     console.log('Connected to SQLite database');
-    // Create calls table if it doesn't exist
-    db.run(`
-      CREATE TABLE IF NOT EXISTS calls (
-        id TEXT PRIMARY KEY,
-        timestamp TEXT NOT NULL,
-        transcript TEXT NOT NULL,
-        caller_name TEXT NOT NULL,
-        caller_phone TEXT NOT NULL,
-        sentiment TEXT NOT NULL,
-        summary TEXT NOT NULL,
-        recording_url TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    // Drop and recreate table with updated schema
+    db.serialize(() => {
+      db.run('DROP TABLE IF EXISTS calls', (err) => {
+        if (err) {
+          console.error('Error dropping table:', err);
+          return;
+        }
+        console.log('Dropped existing calls table');
+      });
+
+      db.run(`
+        CREATE TABLE calls (
+          id TEXT PRIMARY KEY,
+          timestamp TEXT NOT NULL,
+          transcript TEXT NOT NULL,
+          caller_name TEXT NOT NULL,
+          caller_phone TEXT NOT NULL,
+          sentiment TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          recording_url TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
+        if (err) {
+          console.error('Error creating table:', err);
+          return;
+        }
+        console.log('Created calls table with new schema');
+      });
+    });
   }
 });
 
