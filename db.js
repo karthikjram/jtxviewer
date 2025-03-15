@@ -136,7 +136,53 @@ const dbOperations = {
         }
       );
     });
+  },
+
+  // Get a single call by ID
+  getCallById: (id) => {
+    return new Promise((resolve, reject) => {
+      console.log('Fetching call by ID:', id);
+      db.get(
+        `SELECT * FROM calls WHERE id = ?`,
+        [id],
+        (err, row) => {
+          if (err) {
+            console.error('Error fetching call:', err);
+            reject(err);
+            return;
+          }
+
+          if (!row) {
+            console.log('No call found with ID:', id);
+            resolve(null);
+            return;
+          }
+
+          try {
+            // Format the row to match our application structure
+            const call = {
+              id: row.id,
+              timestamp: row.timestamp,
+              transcript: row.transcript,
+              caller: {
+                name: row.caller_name,
+                phone: row.caller_phone
+              },
+              sentiment: row.sentiment,
+              summary: row.summary,
+              recording_url: row.recording_url
+            };
+            console.log('Successfully fetched call:', id);
+            resolve(call);
+          } catch (formatError) {
+            console.error('Error formatting call data:', formatError);
+            reject(formatError);
+          }
+        }
+      );
+    });
   }
 };
 
+// Export database operations
 module.exports = dbOperations;

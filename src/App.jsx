@@ -6,23 +6,40 @@ import { ChartBarIcon, ChatBubbleLeftIcon, ClockIcon, PlayIcon, PauseIcon } from
 // Components
 const CallCard = ({ call }) => {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [audioError, setAudioError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const audioRef = useRef(null);
 
-  const sentimentColor = {
-    positive: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-    neutral: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
-    negative: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-  }[call.sentiment];
+  // Get base URL for API calls
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? 'https://jtxviewer.onrender.com'
+    : 'http://localhost:3000';
+
+  const audioUrl = call.recording_url?.startsWith('http') 
+    ? call.recording_url 
+    : `${baseUrl}${call.recording_url}`;
+
+  // Format time in mm:ss
+  const formatTime = (time) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
 
   // Load audio when recording URL changes
   useEffect(() => {
-    if (!call.recording_url) return;
+    if (!audioUrl) {
+      setAudioError('No recording URL available');
+      return;
+    }
     
-    console.log('Loading audio from URL:', call.recording_url);
+    console.log('Loading audio from URL:', audioUrl);
+    setIsLoading(true);
+    setAudioError(null);
+
     if (audioRef.current) {
       const audio = audioRef.current;
 
@@ -30,6 +47,7 @@ const CallCard = ({ call }) => {
       const onLoadedMetadata = () => {
         setDuration(audio.duration);
         setAudioLoaded(true);
+        setIsLoading(false);
         setAudioError(null);
       };
       const onEnded = () => {
@@ -42,35 +60,42 @@ const CallCard = ({ call }) => {
           error: e.target.error,
           networkState: e.target.networkState,
           readyState: e.target.readyState,
-          url: call.recording_url
+          url: audioUrl
         });
         setAudioError('Failed to load audio recording. Please try again.');
         setAudioLoaded(false);
         setIsPlaying(false);
+        setIsLoading(false);
       };
       const onLoadStart = () => {
         setAudioLoaded(false);
         setAudioError(null);
+        setIsLoading(true);
       };
       const onCanPlayThrough = () => {
         setAudioLoaded(true);
         setAudioError(null);
+        setIsLoading(false);
       };
       const onAbort = () => {
         setAudioLoaded(false);
         setAudioError('Audio loading was aborted');
         setIsPlaying(false);
+        setIsLoading(false);
       };
       const onStalled = () => {
         setAudioError('Audio playback stalled. Please try again.');
         setIsPlaying(false);
+        setIsLoading(false);
       };
       const onWaiting = () => {
         setAudioLoaded(false);
+        setIsLoading(true);
       };
       const onPlaying = () => {
         setAudioLoaded(true);
         setAudioError(null);
+        setIsLoading(false);
       };
 
       audio.addEventListener('timeupdate', onTimeUpdate);
@@ -90,6 +115,7 @@ const CallCard = ({ call }) => {
       setCurrentTime(0);
       setDuration(0);
       setIsPlaying(false);
+      setIsLoading(true);
 
       return () => {
         audio.removeEventListener('timeupdate', onTimeUpdate);
@@ -104,42 +130,27 @@ const CallCard = ({ call }) => {
         audio.removeEventListener('playing', onPlaying);
       };
     }
-  }, [call.recording_url]);
+  }, [audioUrl]);
 
-  const togglePlay = async () => {
+  const togglePlayPause = () => {
     if (audioRef.current) {
-      try {
-        if (isPlaying) {
-          audioRef.current.pause();
-          setIsPlaying(false);
-        } else {
-          await audioRef.current.play();
-          setIsPlaying(true);
-        }
-      } catch (error) {
-        console.error('Playback error:', error);
-        setAudioError('Failed to play audio. Please try again.');
-        setIsPlaying(false);
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch(error => {
+          console.error('Error playing audio:', error);
+          setAudioError('Failed to play audio. Please try again.');
+        });
       }
+      setIsPlaying(!isPlaying);
     }
   };
 
-  const formatTime = (time) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const handleTimelineClick = (e) => {
-    const timeline = e.currentTarget;
-    const rect = timeline.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
-    const newTime = ratio * duration;
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  };
+  const sentimentColor = {
+    positive: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+    neutral: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+    negative: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+  }[call.sentiment];
 
   return (
     <div className="card mb-4">
@@ -149,63 +160,85 @@ const CallCard = ({ call }) => {
           <h3 className="text-lg font-semibold">Call Transcript</h3>
         </div>
         <div className="flex items-center space-x-4">
-          {call.recording_url && !audioError ? (
-            <div className="flex items-center space-x-4 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1">
-              {!audioLoaded ? (
-                <div className="flex items-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    Loading audio...
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={togglePlay}
-                    className="text-primary-600 hover:text-primary-700 focus:outline-none"
-                  >
-                    {isPlaying ? (
-                      <PauseIcon className="h-6 w-6" />
-                    ) : (
-                      <PlayIcon className="h-6 w-6" />
-                    )}
-                  </button>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400 min-w-[40px]">
-                      {formatTime(currentTime)}
-                    </span>
-                    <div
-                      className="w-32 h-1 bg-gray-300 dark:bg-gray-600 rounded cursor-pointer relative"
-                      onClick={handleTimelineClick}
-                    >
-                      <div
-                        className="absolute top-0 left-0 h-full bg-primary-600 rounded transition-all duration-100"
-                        style={{ width: `${(currentTime / duration) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-600 dark:text-gray-400 min-w-[40px]">
-                      {formatTime(duration)}
-                    </span>
-                  </div>
-                  <audio 
-                    ref={audioRef} 
-                    preload="metadata"
-                    crossOrigin="anonymous"
-                  >
-                    <source 
-                      src={call.recording_url} 
-                      type="audio/wav"
-                    />
-                    Your browser does not support the audio element.
-                  </audio>
-                </>
-              )}
-            </div>
-          ) : audioError ? (
-            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-lg">
+          {audioError ? (
+            <div className="text-red-500 dark:text-red-400 text-sm mb-2">
               {audioError}
             </div>
           ) : null}
+          {call.recording_url && (
+            <>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={togglePlayPause}
+                  disabled={!audioLoaded || isLoading}
+                  className={`p-2 rounded-full ${
+                    !audioLoaded || isLoading
+                      ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                      : 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700'
+                  } text-white`}
+                >
+                  {isLoading ? (
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  ) : isPlaying ? (
+                    <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
+                </button>
+                <div className="flex-1">
+                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                    <div
+                      className="h-2 bg-blue-500 dark:bg-blue-600 rounded-full"
+                      style={{
+                        width: `${(currentTime / duration) * 100 || 0}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(duration)}</span>
+                  </div>
+                </div>
+              </div>
+              <audio 
+                ref={audioRef} 
+                preload="metadata"
+                crossOrigin="anonymous"
+              >
+                <source 
+                  src={audioUrl}
+                  type="audio/wav"
+                />
+                Your browser does not support the audio element.
+              </audio>
+            </>
+          )}
           <div className="flex items-center space-x-2 text-sm text-gray-500">
             <ClockIcon className="h-4 w-4" />
             <time>{format(new Date(call.timestamp), 'PPpp')}</time>

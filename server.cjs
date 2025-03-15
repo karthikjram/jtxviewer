@@ -10,9 +10,10 @@ require('dotenv').config();
 
 // Ensure data directory exists
 // Use Render's persistent volume if available, otherwise use local path
-const dataDir = process.env.RENDER_VOLUME_PATH || path.join('/', 'data');
+const dataDir = process.env.RENDER_VOLUME_PATH || path.join(__dirname, 'data');
 if (!require('fs').existsSync(dataDir)) {
   require('fs').mkdirSync(dataDir, { recursive: true });
+  console.log('Created data directory:', dataDir);
 }
 
 // Initialize SQLite database with absolute path
@@ -40,6 +41,7 @@ function initializeDatabase() {
               reject(err);
               return;
             }
+            console.log('Dropped existing calls table');
             resolve();
           });
         });
@@ -56,7 +58,8 @@ function initializeDatabase() {
               sentiment TEXT NOT NULL,
               summary TEXT NOT NULL,
               recording_url TEXT,
-              created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(id)
             )
           `, (err) => {
             if (err) {
@@ -64,14 +67,27 @@ function initializeDatabase() {
               reject(err);
               return;
             }
-            console.log('Database table created with new schema');
+            console.log('Created calls table with new schema');
+            resolve();
+          });
+        });
+
+        // Create index for faster queries
+        await new Promise((resolve, reject) => {
+          db.run(`CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp DESC)`, (err) => {
+            if (err) {
+              console.error('Error creating index:', err);
+              reject(err);
+              return;
+            }
+            console.log('Created timestamp index');
             resolve();
           });
         });
 
         resolve(db);
       } catch (error) {
-        console.error('Error initializing database:', error);
+        console.error('Error during database initialization:', error);
         reject(error);
       }
     });
@@ -112,13 +128,17 @@ io.on('connection', (socket) => {
 // Configure CORS middleware
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? 'https://jtxviewer.onrender.com'
+    ? ['https://jtxviewer.onrender.com']
     : ['http://localhost:3000', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization']
+  allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization', 'Range']
 };
 
+// CORS pre-flight handler
+app.options('*', cors(corsOptions));
+
+// Apply CORS to all routes
 app.use(cors(corsOptions));
 
 // Validate API key middleware
@@ -148,17 +168,45 @@ app.use((err, req, res, next) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', env: process.env.NODE_ENV });
+  res.json({ 
+    status: 'ok', 
+    env: process.env.NODE_ENV,
+    dbPath: dbPath.replace(process.env.HOME || '', '~'),
+    cors: {
+      origin: corsOptions.origin,
+      methods: corsOptions.methods,
+      headers: corsOptions.allowedHeaders
+    }
+  });
 });
 
-// API Routes
-
-// Get call recording
+// Get call recording with proper streaming
 app.get('/calls/:callId/recording', async (req, res) => {
   console.log('Fetching recording for call:', req.params.callId);
   const { callId } = req.params;
   
   try {
+    // First check if the call exists in our database
+    const call = await new Promise((resolve, reject) => {
+      db.get('SELECT recording_url FROM calls WHERE id = ?', [callId], (err, row) => {
+        if (err) {
+          console.error('Database error:', err);
+          reject(err);
+          return;
+        }
+        resolve(row);
+      });
+    });
+
+    if (!call) {
+      console.error('Call not found:', callId);
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    const ultravoxUrl = `https://api.ultravox.ai/api/calls/${callId}/recording`;
+    console.log('Fetching from Ultravox URL:', ultravoxUrl);
+
     const options = {
       method: 'GET',
       headers: {
@@ -167,29 +215,66 @@ app.get('/calls/:callId/recording', async (req, res) => {
       }
     };
 
-    const response = await fetch(`https://api.ultravox.ai/api/calls/${callId}/recording`, options);
+    console.log('Sending request with options:', {
+      ...options,
+      headers: {
+        ...options.headers,
+        'X-API-Key': '[REDACTED]'
+      }
+    });
+
+    const response = await fetch(ultravoxUrl, options);
     
+    console.log('Ultravox response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
     if (!response.ok) {
       console.error('Failed to fetch recording:', response.status, response.statusText);
       throw new Error(`Failed to fetch recording: ${response.statusText}`);
     }
 
-    // Set CORS headers for audio streaming
-    res.setHeader('Access-Control-Allow-Origin', corsOptions.origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // Set CORS headers based on request origin
+    const origin = req.get('Origin');
+    if (origin && corsOptions.origin.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    }
 
-    // Get content type from response
+    // Get content type and size
     const contentType = response.headers.get('content-type');
-    console.log('Recording content type:', contentType);
+    const contentLength = response.headers.get('content-length');
+
+    console.log('Recording details:', {
+      contentType,
+      contentLength,
+      status: response.status,
+      origin,
+      corsHeaders: {
+        origin: res.getHeader('Access-Control-Allow-Origin'),
+        methods: res.getHeader('Access-Control-Allow-Methods'),
+        headers: res.getHeader('Access-Control-Allow-Headers'),
+        credentials: res.getHeader('Access-Control-Allow-Credentials'),
+        vary: res.getHeader('Vary')
+      }
+    });
 
     // Set audio headers
     res.setHeader('Content-Type', contentType || 'audio/wav');
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'no-cache');
-    
-    // Stream the response directly
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    // Stream the response with proper error handling
     response.body.pipe(res);
 
     // Handle errors during streaming
@@ -199,9 +284,17 @@ app.get('/calls/:callId/recording', async (req, res) => {
         res.status(500).json({ error: 'Error streaming audio' });
       }
     });
+
+    // Log when streaming is complete
+    res.on('finish', () => {
+      console.log('Finished streaming audio for call:', callId);
+    });
+
   } catch (error) {
     console.error('Error fetching recording:', error);
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
