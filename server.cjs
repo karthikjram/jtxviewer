@@ -9,35 +9,64 @@ const fetch = require('node-fetch');
 require('dotenv').config();
 
 // Ensure data directory exists
-const dataDir = path.join("/", 'data');
+// Use Render's persistent volume if available, otherwise use local path
+const dataDir = process.env.RENDER_VOLUME_PATH || path.join('/', 'data');
 if (!require('fs').existsSync(dataDir)) {
-  require('fs').mkdirSync(dataDir);
+  require('fs').mkdirSync(dataDir, { recursive: true });
 }
 
 // Initialize SQLite database with absolute path
 const dbPath = path.join(dataDir, 'calls.db');
-console.log('Database path:', dbPath);
+console.log('Using database path:', dbPath);
 
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, (err) => {
-  if (err) {
-    console.error('Error connecting to database:', err);
-  } else {
-    console.log('Connected to SQLite database');
-    // Create calls table if it doesn't exist
-    db.run(`
-      CREATE TABLE IF NOT EXISTS calls (
-        id TEXT PRIMARY KEY,
-        timestamp TEXT NOT NULL,
-        transcript TEXT NOT NULL,
-        caller_name TEXT NOT NULL,
-        caller_phone TEXT NOT NULL,
-        sentiment TEXT NOT NULL,
-        summary TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-  }
-});
+// Function to initialize database
+function initializeDatabase() {
+  return new Promise((resolve, reject) => {
+    console.log('Initializing database at:', dbPath);
+    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, (err) => {
+      if (err) {
+        console.error('Error connecting to database:', err);
+        reject(err);
+        return;
+      }
+      console.log('Connected to SQLite database');
+      
+      // Create calls table if it doesn't exist
+      db.run(`
+        CREATE TABLE IF NOT EXISTS calls (
+          id TEXT PRIMARY KEY,
+          timestamp TEXT NOT NULL,
+          transcript TEXT NOT NULL,
+          caller_name TEXT NOT NULL,
+          caller_phone TEXT NOT NULL,
+          sentiment TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
+        if (err) {
+          console.error('Error creating table:', err);
+          reject(err);
+          return;
+        }
+        console.log('Database table initialized');
+        resolve(db);
+      });
+    });
+  });
+}
+
+// Initialize database
+let db;
+initializeDatabase()
+  .then((database) => {
+    db = database;
+    console.log('Database setup complete');
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1); // Exit if we can't set up the database
+  });
 
 const app = express();
 const httpServer = createServer(app);
@@ -75,7 +104,12 @@ app.get('*', (req, res) => {
 
 // Get all calls
 app.get('/calls', (req, res) => {
-  console.log('Fetching all calls from database...');
+  console.log('Fetching all calls from database at:', dbPath);
+  if (!db) {
+    console.error('Database not initialized');
+    res.status(500).json({ error: 'Database not initialized' });
+    return;
+  }
   db.all('SELECT * FROM calls ORDER BY timestamp DESC', [], (err, rows) => {
     if (err) {
       console.error('Error fetching calls:', err);
