@@ -119,7 +119,7 @@ app.use(bodyParser.json());
 // API Routes
 
 // Get call recording
-app.get('/calls/:callId/recording', async (req, res) => {
+app.get('/calls/:callId/recording', cors(), async (req, res) => {
   const { callId } = req.params;
   
   try {
@@ -135,11 +135,21 @@ app.get('/calls/:callId/recording', async (req, res) => {
       throw new Error(`Failed to fetch recording: ${response.statusText}`);
     }
 
-    // Set audio content type
+    // Set headers for audio streaming
     res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'no-cache');
     
-    // Pipe the response directly
-    response.body.pipe(res);
+    // Stream the response
+    const audioStream = response.body;
+    audioStream.on('error', (error) => {
+      console.error('Audio stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Audio streaming failed' });
+      }
+    });
+    
+    audioStream.pipe(res);
   } catch (error) {
     console.error('Error fetching recording:', error);
     res.status(500).json({ error: error.message });
@@ -243,7 +253,7 @@ app.post('/webhook', async (req, res) => {
       timestamp: new Date().toISOString(),
       id: call.callId || 'call_' + Date.now(),
       sentiment: "Neutral",
-      recording_url: `/calls/${call.callId}/recording`
+      recording_url: `${process.env.NODE_ENV === 'production' ? 'https://jtxviewer.onrender.com' : 'http://localhost:3000'}/calls/${call.callId}/recording`
     };
     
     // Extract caller name from transcript if available

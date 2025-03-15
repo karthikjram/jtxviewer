@@ -34,32 +34,83 @@ const CallCard = ({ call }) => {
       };
       const onError = (e) => {
         console.error('Audio error:', e);
-        setAudioError('Failed to load audio');
+        setAudioError('Failed to load audio recording');
         setAudioLoaded(false);
+        setIsPlaying(false);
+      };
+      const onLoadStart = () => {
+        setAudioLoaded(false);
+        setAudioError(null);
+      };
+      const onCanPlayThrough = () => {
+        setAudioLoaded(true);
+        setAudioError(null);
+      };
+      const onAbort = () => {
+        setAudioLoaded(false);
+        setAudioError('Audio loading was aborted');
+        setIsPlaying(false);
+      };
+      const onStalled = () => {
+        setAudioError('Audio playback stalled. Please try again.');
+        setIsPlaying(false);
+      };
+      const onWaiting = () => {
+        setAudioLoaded(false);
+      };
+      const onPlaying = () => {
+        setAudioLoaded(true);
+        setAudioError(null);
       };
 
       audio.addEventListener('timeupdate', onTimeUpdate);
       audio.addEventListener('loadedmetadata', onLoadedMetadata);
       audio.addEventListener('ended', onEnded);
       audio.addEventListener('error', onError);
+      audio.addEventListener('loadstart', onLoadStart);
+      audio.addEventListener('canplaythrough', onCanPlayThrough);
+      audio.addEventListener('abort', onAbort);
+      audio.addEventListener('stalled', onStalled);
+      audio.addEventListener('waiting', onWaiting);
+      audio.addEventListener('playing', onPlaying);
+
+      // Reset state when URL changes
+      setAudioLoaded(false);
+      setAudioError(null);
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
 
       return () => {
         audio.removeEventListener('timeupdate', onTimeUpdate);
         audio.removeEventListener('loadedmetadata', onLoadedMetadata);
         audio.removeEventListener('ended', onEnded);
         audio.removeEventListener('error', onError);
+        audio.removeEventListener('loadstart', onLoadStart);
+        audio.removeEventListener('canplaythrough', onCanPlayThrough);
+        audio.removeEventListener('abort', onAbort);
+        audio.removeEventListener('stalled', onStalled);
+        audio.removeEventListener('waiting', onWaiting);
+        audio.removeEventListener('playing', onPlaying);
       };
     }
   }, [call.recording_url]);
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
+      try {
+        if (isPlaying) {
+          audioRef.current.pause();
+          setIsPlaying(false);
+        } else {
+          await audioRef.current.play();
+          setIsPlaying(true);
+        }
+      } catch (error) {
+        console.error('Playback error:', error);
+        setAudioError('Failed to play audio. Please try again.');
+        setIsPlaying(false);
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
