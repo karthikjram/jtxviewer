@@ -182,15 +182,15 @@ app.get('/health', (req, res) => {
 
 // Get call recording with proper streaming
 app.get('/calls/:callId/recording', async (req, res) => {
-  console.log('Fetching recording for call:', req.params.callId);
   const { callId } = req.params;
+  console.log(`[Audio] Fetching recording for call: ${callId}`);
   
   try {
     // First check if the call exists in our database
     const call = await new Promise((resolve, reject) => {
       db.get('SELECT recording_url FROM calls WHERE id = ?', [callId], (err, row) => {
         if (err) {
-          console.error('Database error:', err);
+          console.error('[Audio] Database error:', err);
           reject(err);
           return;
         }
@@ -199,23 +199,24 @@ app.get('/calls/:callId/recording', async (req, res) => {
     });
 
     if (!call) {
-      console.error('Call not found:', callId);
+      console.error(`[Audio] Call not found: ${callId}`);
       res.status(404).json({ error: 'Call not found' });
       return;
     }
 
     const ultravoxUrl = `https://api.ultravox.ai/api/calls/${callId}/recording`;
-    console.log('Fetching from Ultravox URL:', ultravoxUrl);
+    console.log('[Audio] Fetching from Ultravox URL:', ultravoxUrl);
 
     const options = {
       method: 'GET',
       headers: {
         'X-API-Key': req.apiKey,
-        'Accept': 'audio/wav,audio/*;q=0.9,*/*;q=0.8'
+        'Accept': 'audio/wav,audio/*;q=0.9,*/*;q=0.8',
+        'User-Agent': 'JTXViewer/1.0'
       }
     };
 
-    console.log('Sending request with options:', {
+    console.log('[Audio] Sending request with options:', {
       ...options,
       headers: {
         ...options.headers,
@@ -225,14 +226,19 @@ app.get('/calls/:callId/recording', async (req, res) => {
 
     const response = await fetch(ultravoxUrl, options);
     
-    console.log('Ultravox response:', {
+    console.log('[Audio] Ultravox response:', {
       status: response.status,
       statusText: response.statusText,
       headers: Object.fromEntries(response.headers.entries())
     });
 
     if (!response.ok) {
-      console.error('Failed to fetch recording:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('[Audio] Failed to fetch recording:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       throw new Error(`Failed to fetch recording: ${response.statusText}`);
     }
 
@@ -250,7 +256,7 @@ app.get('/calls/:callId/recording', async (req, res) => {
     const contentType = response.headers.get('content-type');
     const contentLength = response.headers.get('content-length');
 
-    console.log('Recording details:', {
+    console.log('[Audio] Recording details:', {
       contentType,
       contentLength,
       status: response.status,
@@ -274,12 +280,55 @@ app.get('/calls/:callId/recording', async (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
-    // Stream the response with proper error handling
-    response.body.pipe(res);
+    // Handle range requests
+    const range = req.headers.range;
+    if (range) {
+      console.log('[Audio] Range request:', range);
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
+      const chunksize = (end - start) + 1;
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${contentLength}`);
+      res.setHeader('Content-Length', chunksize);
+
+      console.log('[Audio] Serving range:', {
+        start,
+        end,
+        chunksize,
+        totalSize: contentLength
+      });
+    }
+
+    // Create a buffer to collect chunks
+    const chunks = [];
+    let totalSize = 0;
+
+    // Handle streaming
+    response.body.on('data', (chunk) => {
+      chunks.push(chunk);
+      totalSize += chunk.length;
+      console.log(`[Audio] Received chunk: ${chunk.length} bytes, Total: ${totalSize} bytes`);
+    });
+
+    response.body.on('end', () => {
+      console.log(`[Audio] Finished receiving data. Total size: ${totalSize} bytes`);
+      const buffer = Buffer.concat(chunks);
+
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : buffer.length - 1;
+        res.end(buffer.slice(start, end + 1));
+      } else {
+        res.end(buffer);
+      }
+    });
 
     // Handle errors during streaming
     response.body.on('error', (error) => {
-      console.error('Error streaming audio:', error);
+      console.error('[Audio] Error streaming audio:', error);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error streaming audio' });
       }
@@ -287,13 +336,16 @@ app.get('/calls/:callId/recording', async (req, res) => {
 
     // Log when streaming is complete
     res.on('finish', () => {
-      console.log('Finished streaming audio for call:', callId);
+      console.log(`[Audio] Finished streaming audio for call: ${callId}`);
     });
 
   } catch (error) {
-    console.error('Error fetching recording:', error);
+    console.error('[Audio] Error fetching recording:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ 
+        error: 'Failed to fetch recording',
+        message: error.message
+      });
     }
   }
 });

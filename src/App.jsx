@@ -11,7 +11,9 @@ const CallCard = ({ call }) => {
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [audioError, setAudioError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const audioRef = useRef(null);
+  const maxRetries = 3;
 
   // Get base URL for API calls
   const baseUrl = process.env.NODE_ENV === 'production' 
@@ -27,6 +29,23 @@ const CallCard = ({ call }) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Function to retry loading audio
+  const retryLoadAudio = () => {
+    if (retryCount >= maxRetries) {
+      setAudioError('Maximum retry attempts reached. Please try again later.');
+      return;
+    }
+
+    console.log(`Retrying audio load (attempt ${retryCount + 1}/${maxRetries})...`);
+    setRetryCount(prev => prev + 1);
+    setAudioError(null);
+    setIsLoading(true);
+    
+    if (audioRef.current) {
+      audioRef.current.load();
+    }
   };
 
   // Load audio when recording URL changes
@@ -49,6 +68,7 @@ const CallCard = ({ call }) => {
         setAudioLoaded(true);
         setIsLoading(false);
         setAudioError(null);
+        setRetryCount(0); // Reset retry count on successful load
       };
       const onEnded = () => {
         setIsPlaying(false);
@@ -60,12 +80,36 @@ const CallCard = ({ call }) => {
           error: e.target.error,
           networkState: e.target.networkState,
           readyState: e.target.readyState,
-          url: audioUrl
+          url: audioUrl,
+          retryCount
         });
-        setAudioError('Failed to load audio recording. Please try again.');
+
+        let errorMessage = 'Failed to load audio recording.';
+        if (e.target.error) {
+          switch (e.target.error.code) {
+            case e.target.error.MEDIA_ERR_ABORTED:
+              errorMessage = 'Audio loading was aborted.';
+              break;
+            case e.target.error.MEDIA_ERR_NETWORK:
+              errorMessage = 'Network error while loading audio.';
+              break;
+            case e.target.error.MEDIA_ERR_DECODE:
+              errorMessage = 'Audio decoding error.';
+              break;
+            case e.target.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+              errorMessage = 'Audio format not supported.';
+              break;
+          }
+        }
+
+        setAudioError(`${errorMessage} ${retryCount < maxRetries ? 'Retrying...' : 'Please try again.'}`);
         setAudioLoaded(false);
         setIsPlaying(false);
         setIsLoading(false);
+
+        if (retryCount < maxRetries) {
+          setTimeout(retryLoadAudio, 2000); // Retry after 2 seconds
+        }
       };
       const onLoadStart = () => {
         setAudioLoaded(false);
@@ -76,6 +120,7 @@ const CallCard = ({ call }) => {
         setAudioLoaded(true);
         setAudioError(null);
         setIsLoading(false);
+        setRetryCount(0); // Reset retry count on successful load
       };
       const onAbort = () => {
         setAudioLoaded(false);
@@ -84,6 +129,12 @@ const CallCard = ({ call }) => {
         setIsLoading(false);
       };
       const onStalled = () => {
+        console.warn('Audio playback stalled:', {
+          networkState: audio.networkState,
+          readyState: audio.readyState,
+          currentTime: audio.currentTime,
+          url: audioUrl
+        });
         setAudioError('Audio playback stalled. Please try again.');
         setIsPlaying(false);
         setIsLoading(false);
@@ -96,6 +147,7 @@ const CallCard = ({ call }) => {
         setAudioLoaded(true);
         setAudioError(null);
         setIsLoading(false);
+        setRetryCount(0); // Reset retry count on successful playback
       };
 
       audio.addEventListener('timeupdate', onTimeUpdate);
@@ -116,6 +168,7 @@ const CallCard = ({ call }) => {
       setDuration(0);
       setIsPlaying(false);
       setIsLoading(true);
+      setRetryCount(0);
 
       return () => {
         audio.removeEventListener('timeupdate', onTimeUpdate);
@@ -177,19 +230,25 @@ const CallCard = ({ call }) => {
           <div className="mt-4 bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
             <div className="flex items-center justify-between space-x-4">
               <button
-                onClick={togglePlayPause}
-                disabled={!audioLoaded || isLoading}
+                onClick={audioError ? retryLoadAudio : togglePlayPause}
+                disabled={isLoading}
                 className={`flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
-                  !audioLoaded || isLoading
+                  isLoading
                     ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed'
+                    : audioError
+                    ? 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 transform hover:scale-105'
                     : 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transform hover:scale-105'
                 } text-white`}
-                aria-label={isPlaying ? 'Pause' : 'Play'}
+                aria-label={audioError ? 'Retry' : isPlaying ? 'Pause' : 'Play'}
               >
                 {isLoading ? (
                   <div className="w-5 h-5 relative">
                     <div className="w-full h-full rounded-full border-2 border-t-blue-200 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
                   </div>
+                ) : audioError ? (
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
                 ) : isPlaying ? (
                   <PauseIcon className="h-5 w-5" />
                 ) : (
@@ -298,7 +357,7 @@ const App = () => {
             <div className="flex items-center space-x-3">
               <ChatBubbleLeftIcon className="h-8 w-8 text-blue-500" />
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                Call Transcript Viewer
+                Jio Audiobot 2.0 - Call Transcript Viewer
               </h1>
             </div>
             <div className="text-sm text-gray-500 dark:text-gray-400">
