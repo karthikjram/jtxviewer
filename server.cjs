@@ -5,9 +5,20 @@ const { Server } = require('socket.io');
 const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fetch = require('node-fetch');
+require('dotenv').config();
 
-// Initialize SQLite database
-const db = new sqlite3.Database(path.join(__dirname, 'calls.db'), (err) => {
+// Ensure data directory exists
+const dataDir = path.join(__dirname, 'data');
+if (!require('fs').existsSync(dataDir)) {
+  require('fs').mkdirSync(dataDir);
+}
+
+// Initialize SQLite database with absolute path
+const dbPath = path.join(dataDir, 'calls.db');
+console.log('Database path:', dbPath);
+
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, (err) => {
   if (err) {
     console.error('Error connecting to database:', err);
   } else {
@@ -64,6 +75,7 @@ app.get('*', (req, res) => {
 
 // Get all calls
 app.get('/calls', (req, res) => {
+  console.log('Fetching all calls from database...');
   db.all('SELECT * FROM calls ORDER BY timestamp DESC', [], (err, rows) => {
     if (err) {
       console.error('Error fetching calls:', err);
@@ -71,18 +83,24 @@ app.get('/calls', (req, res) => {
       return;
     }
 
+    console.log(`Found ${rows?.length || 0} calls in database`);
+    
     // Format the data to match our application structure
-    const calls = rows.map(row => ({
-      id: row.id,
-      timestamp: row.timestamp,
-      transcript: row.transcript,
-      caller: {
-        name: row.caller_name,
-        phone: row.caller_phone
-      },
-      sentiment: row.sentiment,
-      summary: row.summary
-    }));
+    const calls = (rows || []).map(row => {
+      const formattedCall = {
+        id: row.id,
+        timestamp: row.timestamp,
+        transcript: row.transcript,
+        caller: {
+          name: row.caller_name,
+          phone: row.caller_phone
+        },
+        sentiment: row.sentiment,
+        summary: row.summary
+      };
+      console.log('Formatted call:', formattedCall);
+      return formattedCall;
+    });
 
     res.json(calls);
   });
@@ -91,7 +109,7 @@ app.get('/calls', (req, res) => {
 const processedCalls = new Set();
 
 // Webhook endpoint
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   const { event, call } = req.body;
   
   if (event === 'call.ended') {
@@ -113,12 +131,41 @@ app.post('/webhook', (req, res) => {
       name: 'Unknown Caller',
       phone: 'Unknown Number'
     };
-    callData.transcript = call.shortSummary;
+    
+    // Fetch messages from Ultravox API
+    try {
+      const options = {
+        method: 'GET',
+        headers: {
+          'X-API-Key': process.env.ULTRAVOX_API_KEY
+        }
+      };
+      
+      const response = await fetch(`https://api.ultravox.ai/api/calls/${callData.id}/messages`, options);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch messages: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Fetched messages:', data);
+      
+      // Extract and combine all message texts
+      const messageTexts = data.results
+        .filter(msg => msg.text) // Only include messages that have text
+        .map(msg => msg.text)
+        .join('\n');
+        
+      callData.transcript = messageTexts || 'No transcript available';
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      callData.transcript = 'Error fetching transcript';
+    }
 
     processedCalls.add(call.callId); // Mark this call ID as processed
 
     // Save to database
     try {
+      console.log('Saving call to database:', callData);
       const stmt = db.prepare(`
         INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -131,7 +178,14 @@ app.post('/webhook', (req, res) => {
         callData.caller.name,
         callData.caller.phone,
         callData.sentiment,
-        callData.summary
+        callData.summary,
+        function(err) { // Using function to get 'this' context
+          if (err) {
+            console.error('Error inserting call:', err);
+            throw err;
+          }
+          console.log(`Call inserted successfully. Row ID: ${this.lastID}`);
+        }
       );
       
       stmt.finalize();
