@@ -84,7 +84,7 @@ function App() {
     async function fetchCalls() {
       try {
         console.log('Fetching existing calls...');
-        const response = await fetch('http://localhost:3000/calls');
+        const response = await fetch('https://jtxviewer.onrender.com:10000/calls');
         if (!response.ok) throw new Error('Failed to fetch calls');
         const data = await response.json();
         console.log('Received calls:', data);
@@ -101,7 +101,7 @@ function App() {
 
     // Connect to WebSocket
     console.log('Connecting to WebSocket...');
-    const socket = io('http://localhost:3000', {
+    const socket = io('https://jtxviewer.onrender.com:10000', {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
