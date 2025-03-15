@@ -109,47 +109,96 @@ io.on('connection', (socket) => {
   });
 });
 
-app.use(cors({
-  origin: 'https://jtxviewer.onrender.com',
-  methods: ['GET', 'POST'],
-  credentials: true
-}));
+// Configure CORS middleware
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? 'https://jtxviewer.onrender.com'
+    : ['http://localhost:3000', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization']
+};
+
+app.use(cors(corsOptions));
+
+// Validate API key middleware
+const validateApiKey = (req, res, next) => {
+  const apiKey = process.env.ULTRAVOX_API_KEY;
+  if (!apiKey) {
+    console.error('ULTRAVOX_API_KEY not configured');
+    return res.status(500).json({ error: 'API key not configured' });
+  }
+  req.apiKey = apiKey;
+  next();
+};
+
+app.use(validateApiKey);
+
+// Body parser middleware
 app.use(bodyParser.json());
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: err.message
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', env: process.env.NODE_ENV });
+});
 
 // API Routes
 
 // Get call recording
-app.get('/calls/:callId/recording', cors(), async (req, res) => {
+app.get('/calls/:callId/recording', async (req, res) => {
+  console.log('Fetching recording for call:', req.params.callId);
   const { callId } = req.params;
   
   try {
     const options = {
       method: 'GET',
       headers: {
-        'X-API-Key': process.env.ULTRAVOX_API_KEY
+        'X-API-Key': req.apiKey,
+        'Accept': 'audio/wav,audio/*;q=0.9,*/*;q=0.8'
       }
     };
 
     const response = await fetch(`https://api.ultravox.ai/api/calls/${callId}/recording`, options);
+    
     if (!response.ok) {
+      console.error('Failed to fetch recording:', response.status, response.statusText);
       throw new Error(`Failed to fetch recording: ${response.statusText}`);
     }
 
-    // Set headers for audio streaming
-    res.setHeader('Content-Type', 'audio/wav');
+    // Set CORS headers for audio streaming
+    res.setHeader('Access-Control-Allow-Origin', corsOptions.origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    // Get content type from response
+    const contentType = response.headers.get('content-type');
+    console.log('Recording content type:', contentType);
+
+    // Set audio headers
+    res.setHeader('Content-Type', contentType || 'audio/wav');
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'no-cache');
     
-    // Stream the response
-    const audioStream = response.body;
-    audioStream.on('error', (error) => {
-      console.error('Audio stream error:', error);
+    // Stream the response directly
+    response.body.pipe(res);
+
+    // Handle errors during streaming
+    response.body.on('error', (error) => {
+      console.error('Error streaming audio:', error);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Audio streaming failed' });
+        res.status(500).json({ error: 'Error streaming audio' });
       }
     });
-    
-    audioStream.pipe(res);
   } catch (error) {
     console.error('Error fetching recording:', error);
     res.status(500).json({ error: error.message });
@@ -239,8 +288,7 @@ app.post('/webhook', async (req, res) => {
   if (event === 'call.ended') {
     console.log('Call ended:', call);
 
-    // Set recording URL
-    const recordingUrl = `https://jtxviewer.onrender.com/calls/${call.callId}/recording`;
+
     // Process the ended call data
 
     // Check if this call ID has already been processed
@@ -253,7 +301,9 @@ app.post('/webhook', async (req, res) => {
       timestamp: new Date().toISOString(),
       id: call.callId || 'call_' + Date.now(),
       sentiment: "Neutral",
-      recording_url: `${process.env.NODE_ENV === 'production' ? 'https://jtxviewer.onrender.com' : 'http://localhost:3000'}/calls/${call.callId}/recording`
+      recording_url: process.env.NODE_ENV === 'production'
+        ? `https://jtxviewer.onrender.com/calls/${call.callId}/recording`
+        : `http://localhost:3000/calls/${call.callId}/recording`
     };
     
     // Extract caller name from transcript if available

@@ -18,7 +18,11 @@ const CallCard = ({ call }) => {
     negative: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
   }[call.sentiment];
 
+  // Load audio when recording URL changes
   useEffect(() => {
+    if (!call.recording_url) return;
+    
+    console.log('Loading audio from URL:', call.recording_url);
     if (audioRef.current) {
       const audio = audioRef.current;
 
@@ -34,6 +38,11 @@ const CallCard = ({ call }) => {
       };
       const onError = (e) => {
         console.error('Audio error:', e);
+        console.error('Audio error details:', {
+          error: e.target.error,
+          networkState: e.target.networkState,
+          readyState: e.target.readyState
+        });
         setAudioError('Failed to load audio recording');
         setAudioLoaded(false);
         setIsPlaying(false);
@@ -177,7 +186,13 @@ const CallCard = ({ call }) => {
                       {formatTime(duration)}
                     </span>
                   </div>
-                  <audio ref={audioRef} src={call.recording_url} preload="metadata" />
+                  <audio 
+                    ref={audioRef} 
+                    preload="metadata"
+                    crossOrigin="anonymous"
+                  >
+                    <source src={call.recording_url} type="audio/wav" />
+                  </audio>
                 </>
               )}
             </div>

@@ -1,31 +1,41 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-// Use Render's persistent volume if available, otherwise use local path
+// Determine database path based on environment
 const dataDir = process.env.RENDER_VOLUME_PATH || path.join(__dirname, 'data');
-if (!require('fs').existsSync(dataDir)) {
+
+// Ensure data directory exists
+try {
   require('fs').mkdirSync(dataDir, { recursive: true });
+  console.log('Data directory ensured at:', dataDir);
+} catch (err) {
+  console.error('Error creating data directory:', err);
+  throw err;
 }
 
-// Create a new database connection
+// Set database path
 const dbPath = path.join(dataDir, 'calls.db');
 console.log('Using database path:', dbPath);
 
-const db = new sqlite3.Database(dbPath, (err) => {
+// Create database connection with proper error handling
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE, (err) => {
   if (err) {
     console.error('Error connecting to database:', err);
   } else {
     console.log('Connected to SQLite database');
-    // Drop and recreate table with updated schema
+    
+    // Initialize database schema with proper error handling
     db.serialize(() => {
+      // Drop existing table
       db.run('DROP TABLE IF EXISTS calls', (err) => {
         if (err) {
           console.error('Error dropping table:', err);
-          return;
+          throw err; // Throw error to stop initialization
         }
         console.log('Dropped existing calls table');
       });
 
+      // Create table with updated schema
       db.run(`
         CREATE TABLE calls (
           id TEXT PRIMARY KEY,
@@ -36,14 +46,24 @@ const db = new sqlite3.Database(dbPath, (err) => {
           sentiment TEXT NOT NULL,
           summary TEXT NOT NULL,
           recording_url TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(id)
         )
       `, (err) => {
         if (err) {
           console.error('Error creating table:', err);
-          return;
+          throw err; // Throw error to stop initialization
         }
         console.log('Created calls table with new schema');
+      });
+
+      // Create index for faster queries
+      db.run(`CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp DESC)`, (err) => {
+        if (err) {
+          console.error('Error creating index:', err);
+          throw err;
+        }
+        console.log('Created timestamp index');
       });
     });
   }
