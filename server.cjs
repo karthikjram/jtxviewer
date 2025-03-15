@@ -136,27 +136,27 @@ app.post('/webhook', async (req, res) => {
       phone: call.caller?.phoneNumber || 'Unknown Number'
     };
     
-    // Clean up and format the transcript
-    const cleanTranscript = call.shortSummary
-      ?.replace('(New Call) Respond as if you are answering the phone.\n', '')
-      ?.trim() || 'No transcript available';
-    callData.transcript = cleanTranscript;
+    // // Clean up and format the transcript
+    // const cleanTranscript = call.shortSummary
+    //   ?.replace('(New Call) Respond as if you are answering the phone.\n', '')
+    //   ?.trim() || 'No transcript available';
+    // callData.transcript = cleanTranscript;
     
-    // Generate a meaningful summary
-    const conversationLines = cleanTranscript.split('\n');
-    const summaryParts = [];
+    // // Generate a meaningful summary
+    // const conversationLines = cleanTranscript.split('\n');
+    // const summaryParts = [];
     
-    if (callerName !== 'Unknown Caller') {
-      summaryParts.push(`Call with ${callerName}`);
-    }
+    // if (callerName !== 'Unknown Caller') {
+    //   summaryParts.push(`Call with ${callerName}`);
+    // }
     
-    // Add first exchange to summary
-    if (conversationLines.length >= 2) {
-      const firstExchange = conversationLines.slice(0, 2).join(' → ');
-      summaryParts.push(firstExchange);
-    }
+    // // Add first exchange to summary
+    // if (conversationLines.length >= 2) {
+    //   const firstExchange = conversationLines.slice(0, 2).join(' → ');
+    //   summaryParts.push(firstExchange);
+    // }
     
-    callData.summary = summaryParts.join(' - ') || 'Call transcript';
+    callData.summary = call.shortSummary || 'Call transcript';
     
     // Fetch messages from Ultravox API
     try {
