@@ -94,49 +94,77 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 
-// Serve static files from the dist directory
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// Handle SPA routing
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
+// API Routes
 // Get all calls
 app.get('/calls', (req, res) => {
-  console.log('Fetching all calls from database at:', dbPath);
+  console.log('GET /calls - Request received');
+  console.log('Database path:', dbPath);
+  console.log('Database initialized:', !!db);
+
+  // Check database initialization
   if (!db) {
     console.error('Database not initialized');
-    res.status(500).json({ error: 'Database not initialized' });
+    res.status(503).json({
+      error: 'Database not initialized',
+      details: 'Server is still starting up. Please try again in a few seconds.'
+    });
     return;
   }
+
+  // Verify database file exists
+  if (!require('fs').existsSync(dbPath)) {
+    console.error('Database file does not exist at:', dbPath);
+    res.status(500).json({
+      error: 'Database file not found',
+      details: 'The database file is missing. This might indicate a storage configuration issue.'
+    });
+    return;
+  }
+
+  // Query database
   db.all('SELECT * FROM calls ORDER BY timestamp DESC', [], (err, rows) => {
     if (err) {
-      console.error('Error fetching calls:', err);
-      res.status(500).json({ error: 'Failed to fetch calls' });
+      console.error('Database query error:', err);
+      res.status(500).json({
+        error: 'Database query failed',
+        details: err.message
+      });
       return;
     }
 
     console.log(`Found ${rows?.length || 0} calls in database`);
     
-    // Format the data to match our application structure
-    const calls = (rows || []).map(row => {
-      const formattedCall = {
-        id: row.id,
-        timestamp: row.timestamp,
-        transcript: row.transcript,
-        caller: {
-          name: row.caller_name,
-          phone: row.caller_phone
-        },
-        sentiment: row.sentiment,
-        summary: row.summary
-      };
-      console.log('Formatted call:', formattedCall);
-      return formattedCall;
-    });
+    try {
+      // Format the data to match our application structure
+      const calls = (rows || []).map(row => {
+        const formattedCall = {
+          id: row.id,
+          timestamp: row.timestamp,
+          transcript: row.transcript,
+          caller: {
+            name: row.caller_name,
+            phone: row.caller_phone
+          },
+          sentiment: row.sentiment,
+          summary: row.summary
+        };
+        return formattedCall;
+      });
 
-    res.json(calls);
+      // Log sample of response data
+      if (calls.length > 0) {
+        console.log('Sample call data:', JSON.stringify(calls[0], null, 2));
+      }
+
+      res.json(calls);
+      console.log('GET /calls - Response sent successfully');
+    } catch (formatError) {
+      console.error('Error formatting call data:', formatError);
+      res.status(500).json({
+        error: 'Data formatting failed',
+        details: formatError.message
+      });
+    }
   });
 });
 
@@ -283,6 +311,14 @@ function analyzeSentiment(transcript) {
 function generateSummary(transcript) {
   return transcript.split(' ').slice(0, 20).join(' ') + '...';
 }
+
+// Serve static files from the dist directory AFTER API routes
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Handle SPA routing - this should be the LAST route
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
