@@ -465,7 +465,7 @@ IMPORTANT: Answer each category with 3-7 words ONLY. Do NOT explain your reasoni
 15. NPS Prediction: [Promoter/Passive/Detractor]
 16. Issue Complexity: [High/Medium/Low]
 
-Be consistent, precise, and strictly concise.`;
+Be consistent, precise, and strictly concise.`
         },
         {
           role: "user",
