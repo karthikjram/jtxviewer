@@ -132,7 +132,7 @@ const CallCard = ({ call, isSelected }) => {
 
         {call.agent_assessment && (
           <div className="border-t border-slate-200 pt-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Agent Performance Assessment</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Smart Insights</h3>
             <div className="bg-slate-50 p-4 rounded-lg">
               {formatAssessment(call.agent_assessment)}
             </div>
@@ -189,7 +189,7 @@ const CallCard = ({ call, isSelected }) => {
   );
 };
 
-const CallListItem = ({ call, isSelected, onClick }) => {
+const CallListItem = ({ call, isSelected, isNew, onClick }) => {
   const getSentimentColor = (sentiment) => {
     switch (sentiment?.toLowerCase()) {
       case 'positive': return 'text-emerald-500';
@@ -201,13 +201,24 @@ const CallListItem = ({ call, isSelected, onClick }) => {
   return (
     <div 
       onClick={onClick}
-      className={`cursor-pointer p-4 ${isSelected ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-slate-50 border-l-4 border-transparent'} transition-all duration-200`}
+      className={`cursor-pointer p-4 ${
+        isSelected 
+          ? 'bg-indigo-50 border border-indigo-500 rounded-lg m-2' 
+          : 'hover:bg-slate-50 border border-transparent rounded-lg m-2'
+      } transition-all duration-200`}
     >
       <div className="flex justify-between items-start">
         <div>
-          <h3 className="font-medium text-slate-800">
-            {call.caller?.name || 'Unknown Caller'}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-slate-800">
+              {call.caller?.name || 'Unknown Caller'}
+            </h3>
+            {isNew && (
+              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
+                New
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500">
             {call.caller?.phone || 'No phone number'}
           </p>
@@ -231,6 +242,7 @@ const App = () => {
   const [selectedCall, setSelectedCall] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [newCallIds, setNewCallIds] = useState(new Set());
 
   // Get base URL for API calls
   const baseUrl = process.env.NODE_ENV === 'production' 
@@ -245,6 +257,7 @@ const App = () => {
     socket.on('newCall', (call) => {
       console.log('New call received:', call);
       setCalls(prevCalls => [call, ...prevCalls]);
+      setNewCallIds(prev => new Set([...prev, call.id]));
     });
 
     // Fetch initial calls
@@ -259,6 +272,8 @@ const App = () => {
         if (data.length > 0) {
           setSelectedCall(data[0]);
         }
+        // Mark all initially fetched calls as new
+        setNewCallIds(new Set(data.map(call => call.id)));
         setLoading(false);
       } catch (err) {
         console.error('Error fetching calls:', err);
@@ -271,6 +286,16 @@ const App = () => {
 
     return () => socket.disconnect();
   }, [baseUrl]);
+
+  const handleCallSelect = (call) => {
+    setSelectedCall(call);
+    // Remove 'new' tag when call is viewed
+    setNewCallIds(prev => {
+      const updated = new Set(prev);
+      updated.delete(call.id);
+      return updated;
+    });
+  };
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -324,7 +349,8 @@ const App = () => {
                     key={call.id} 
                     call={call}
                     isSelected={selectedCall?.id === call.id}
-                    onClick={() => setSelectedCall(call)}
+                    isNew={newCallIds.has(call.id)}
+                    onClick={() => handleCallSelect(call)}
                   />
                 ))}
               </div>

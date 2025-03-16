@@ -448,22 +448,22 @@ async function assessAgentPerformance(transcript) {
 
 IMPORTANT: Answer each category with 3-7 words ONLY. Do NOT explain your reasoning.
 
-1. Sentiment: [Positive/Neutral/Negative]
-2. Sentiment Progression: [Improved/Deteriorated/Same]
-3. Frustration Level: [High/Medium/Low]
-4. Resolution Confidence: [High/Moderate/Low]
-5. Escalation Needed: [Yes/No]
-6. Repeat Contact Likelihood: [High/Moderate/Low]
-7. Customer Intents: [Complaint/Query/Feedback/Support] can have multiple intents comma seperated
-8. Key Issue: [Short phrase identifying core issue]
-9. Suggested Next Step: [Short recommended follow-up action]
-10. Tags: [Up to 5 comma-separated short tags]
-11. Escalation Recommended: [Yes/No]
-12. Proactive Opportunity: [Up-sell/Cross-sell/None]
-13. Churn Risk: [High/Medium/Low]
-14. Customer Satisfaction: [High/Moderate/Low]
-15. NPS Prediction: [Promoter/Passive/Detractor]
-16. Issue Complexity: [High/Medium/Low]
+
+1. Sentiment Progression: [Improved/Deteriorated/Same]
+2. Frustration Level: [High/Medium/Low]
+3. Resolution Confidence: [High/Moderate/Low]
+4. Escalation Needed: [Yes/No]
+5. Repeat Contact Likelihood: [High/Moderate/Low]
+6. Customer Intents: [Complaint/Query/Feedback/Support] can have multiple intents comma seperated
+7. Key Issue: [Short phrase identifying core issue]
+8. Suggested Next Step: [Short recommended follow-up action]
+9. Tags: [Up to 5 comma-separated short tags regarding the call & topic]
+10. Escalation Recommended: [Yes/No]
+11. Proactive Opportunity: [Up-sell/Cross-sell/None]
+12. Churn Risk: [High/Medium/Low]
+13. Customer Satisfaction: [High/Moderate/Low]
+14. NPS Prediction: [Promoter/Passive/Detractor]
+15. Issue Complexity: [High/Medium/Low]
 
 Be consistent, precise, and strictly concise.`
         },
