@@ -199,18 +199,13 @@ const CallCard = ({ call }) => {
     }
   };
 
-  // Get sentiment color based on score
-  const getSentimentColor = (score) => {
-    if (score >= 0.5) return 'text-green-600';
-    if (score <= -0.5) return 'text-red-600';
-    return 'text-yellow-600';
-  };
-
-  // Get sentiment label based on score
-  const getSentimentLabel = (score) => {
-    if (score >= 0.5) return 'Positive';
-    if (score <= -0.5) return 'Negative';
-    return 'Neutral';
+  // Get sentiment color based on value
+  const getSentimentColor = (sentiment) => {
+    switch(sentiment?.toLowerCase()) {
+      case 'positive': return 'text-green-600';
+      case 'negative': return 'text-red-600';
+      default: return 'text-yellow-600';
+    }
   };
 
   const sentimentColor = {
@@ -236,7 +231,7 @@ const CallCard = ({ call }) => {
               <div className="flex items-center mt-1">
                 <ChartBarIcon className="h-4 w-4 text-gray-500 mr-1" />
                 <span className={`text-sm ${getSentimentColor(call.sentiment)}`}>
-                  Sentiment: {getSentimentLabel(call.sentiment)} ({(call.sentiment * 100).toFixed(1)}%)
+                  Sentiment: {call.sentiment || 'Neutral'}
                 </span>
               </div>
             </div>

@@ -358,45 +358,23 @@ app.get('/calls/:callId/recording', async (req, res) => {
 // Get all calls
 app.get('/calls', (req, res) => {
   console.log('GET /calls - Request received');
-  console.log('Database path:', dbPath);
-  console.log('Database initialized:', !!db);
-
-  // Check database initialization
-  if (!db) {
-    console.error('Database not initialized');
-    res.status(503).json({
-      error: 'Database not initialized',
-      details: 'Server is still starting up. Please try again in a few seconds.'
-    });
-    return;
-  }
-
-  // Verify database file exists
-  if (!require('fs').existsSync(dbPath)) {
-    console.error('Database file does not exist at:', dbPath);
-    res.status(500).json({
-      error: 'Database file not found',
-      details: 'The database file is missing. This might indicate a storage configuration issue.'
-    });
-    return;
-  }
-
-  // Query database
-  db.all('SELECT * FROM calls ORDER BY timestamp DESC', [], (err, rows) => {
+  
+  db.all(`
+    SELECT id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url
+    FROM calls 
+    ORDER BY timestamp DESC
+  `, [], async (err, rows) => {
     if (err) {
-      console.error('Database query error:', err);
-      res.status(500).json({
+      console.error('Database error:', err);
+      return res.status(500).json({
         error: 'Database query failed',
         details: err.message
       });
-      return;
     }
 
-    console.log(`Found ${rows?.length || 0} calls in database`);
-    
     try {
-      // Format the data to match our application structure
-      const calls = (rows || []).map(row => {
+      // Format each call record to match the expected structure
+      const calls = rows.map(row => {
         const formattedCall = {
           id: row.id,
           timestamp: row.timestamp,
@@ -405,7 +383,7 @@ app.get('/calls', (req, res) => {
             name: row.caller_name,
             phone: row.caller_phone
           },
-          sentiment: row.sentiment,
+          sentiment: row.sentiment?.toLowerCase() || 'neutral',
           summary: row.summary,
           recording_url: row.recording_url
         };
@@ -438,9 +416,6 @@ app.post('/webhook', async (req, res) => {
   if (event === 'call.ended') {
     console.log('Call ended:', call);
 
-
-    // Process the ended call data
-
     // Check if this call ID has already been processed
     if (processedCalls.has(call.callId)) {
         console.log('Duplicate call event ignored:', call.callId);
@@ -448,9 +423,11 @@ app.post('/webhook', async (req, res) => {
     }
 
     const callData = {
-      timestamp: new Date().toISOString(),
       id: call.callId || 'call_' + Date.now(),
-      sentiment: "Neutral",
+      timestamp: new Date().toISOString(),
+      caller_name: 'Unknown Caller',
+      caller_phone: call.caller?.phoneNumber || 'Unknown Number',
+      sentiment: 'neutral',
       recording_url: process.env.NODE_ENV === 'production'
         ? `https://jtxviewer.onrender.com/calls/${call.callId}/recording`
         : `http://localhost:3000/calls/${call.callId}/recording`
@@ -458,14 +435,10 @@ app.post('/webhook', async (req, res) => {
     
     // Extract caller name from transcript if available
     const nameMatch = call.shortSummary?.match(/My name is ([^.\n]+)/i);
-    const callerName = nameMatch ? nameMatch[1].trim() : 'Unknown Caller';
+    if (nameMatch) {
+      callData.caller_name = nameMatch[1].trim();
+    }
     
-    callData.caller = {
-      name: callerName,
-      phone: call.caller?.phoneNumber || 'Unknown Number'
-    };
-    
-     
     callData.summary = call.shortSummary || 'Call transcript';
     
     // Fetch messages from Ultravox API
@@ -514,8 +487,8 @@ app.post('/webhook', async (req, res) => {
         callData.id,
         callData.timestamp,
         callData.transcript,
-        callData.caller.name,
-        callData.caller.phone,
+        callData.caller_name,
+        callData.caller_phone,
         callData.sentiment,
         callData.summary,
         callData.recording_url,
@@ -531,7 +504,13 @@ app.post('/webhook', async (req, res) => {
       stmt.finalize();
       
       // Emit to all connected clients
-      io.emit('newCall', callData);
+      io.emit('newCall', {
+        ...callData,
+        caller: {
+          name: callData.caller_name,
+          phone: callData.caller_phone
+        }
+      });
       console.log('Emitted newCall event to all clients');
       
       res.status(200).json({ status: 'success' });
@@ -550,7 +529,7 @@ async function analyzeSentiment(transcript) {
       messages: [
         {
           role: "system",
-          content: "Perform sentiment analysis (positive, neutral, negative) on the given conversation transcript."
+          content: "You are a sentiment analysis expert. Analyze the following transcript and return ONLY one of these words: positive, neutral, or negative. Return only the word, no other text."
         },
         {
           role: "user",
@@ -561,11 +540,11 @@ async function analyzeSentiment(transcript) {
       max_tokens: 10
     });
 
-    const score = completion.choices[0].message.content.trim();
-    return score;
+    const sentiment = completion.choices[0].message.content.trim().toLowerCase();
+    return ['positive', 'neutral', 'negative'].includes(sentiment) ? sentiment : 'neutral';
   } catch (error) {
     console.error('Error analyzing sentiment:', error);
-    return 0; // Default to neutral on error
+    return 'neutral'; // Default to neutral on error
   }
 }
 
