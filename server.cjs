@@ -7,6 +7,11 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fetch = require('node-fetch');
 require('dotenv').config();
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 // Ensure data directory exists
 // Use Render's persistent volume if available, otherwise use local path
@@ -460,26 +465,7 @@ app.post('/webhook', async (req, res) => {
       phone: call.caller?.phoneNumber || 'Unknown Number'
     };
     
-    // // Clean up and format the transcript
-    // const cleanTranscript = call.shortSummary
-    //   ?.replace('(New Call) Respond as if you are answering the phone.\n', '')
-    //   ?.trim() || 'No transcript available';
-    // callData.transcript = cleanTranscript;
-    
-    // // Generate a meaningful summary
-    // const conversationLines = cleanTranscript.split('\n');
-    // const summaryParts = [];
-    
-    // if (callerName !== 'Unknown Caller') {
-    //   summaryParts.push(`Call with ${callerName}`);
-    // }
-    
-    // // Add first exchange to summary
-    // if (conversationLines.length >= 2) {
-    //   const firstExchange = conversationLines.slice(0, 2).join(' → ');
-    //   summaryParts.push(firstExchange);
-    // }
-    
+     
     callData.summary = call.shortSummary || 'Call transcript';
     
     // Fetch messages from Ultravox API
@@ -510,6 +496,9 @@ app.post('/webhook', async (req, res) => {
       console.error('Error fetching messages:', error);
       callData.transcript = 'Error fetching transcript';
     }
+
+    // Analyze sentiment using OpenAI
+    callData.sentiment = await analyzeSentiment(callData.transcript);
 
     processedCalls.add(call.callId); // Mark this call ID as processed
 
@@ -554,20 +543,30 @@ app.post('/webhook', async (req, res) => {
   } 
 });
 
-// Simple sentiment analysis function (replace with actual NLP in production)
-function analyzeSentiment(transcript) {
-  const positiveWords = ['happy', 'great', 'excellent', 'good', 'thanks'];
-  const negativeWords = ['bad', 'poor', 'terrible', 'unhappy', 'issue'];
-  
-  let score = 0;
-  const words = transcript.toLowerCase().split(' ');
-  
-  words.forEach(word => {
-    if (positiveWords.includes(word)) score++;
-    if (negativeWords.includes(word)) score--;
-  });
-  
-  return score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral';
+async function analyzeSentiment(transcript) {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "Perform sentiment analysis (positive, neutral, negative) on the given conversation transcript."
+        },
+        {
+          role: "user",
+          content: transcript
+        }
+      ],
+      temperature: 0,
+      max_tokens: 10
+    });
+
+    const score = completion.choices[0].message.content.trim();
+    return score;
+  } catch (error) {
+    console.error('Error analyzing sentiment:', error);
+    return 0; // Default to neutral on error
+  }
 }
 
 // Simple summary generation (replace with actual NLP in production)

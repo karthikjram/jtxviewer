@@ -199,6 +199,20 @@ const CallCard = ({ call }) => {
     }
   };
 
+  // Get sentiment color based on score
+  const getSentimentColor = (score) => {
+    if (score >= 0.5) return 'text-green-600';
+    if (score <= -0.5) return 'text-red-600';
+    return 'text-yellow-600';
+  };
+
+  // Get sentiment label based on score
+  const getSentimentLabel = (score) => {
+    if (score >= 0.5) return 'Positive';
+    if (score <= -0.5) return 'Negative';
+    return 'Neutral';
+  };
+
   const sentimentColor = {
     positive: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
     neutral: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
@@ -218,6 +232,12 @@ const CallCard = ({ call }) => {
               <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
                 <ClockIcon className="h-4 w-4" />
                 <span>{format(new Date(call.timestamp), 'MMM d, yyyy h:mm a')}</span>
+              </div>
+              <div className="flex items-center mt-1">
+                <ChartBarIcon className="h-4 w-4 text-gray-500 mr-1" />
+                <span className={`text-sm ${getSentimentColor(call.sentiment)}`}>
+                  Sentiment: {getSentimentLabel(call.sentiment)} ({(call.sentiment * 100).toFixed(1)}%)
+                </span>
               </div>
             </div>
           </div>
