@@ -5,214 +5,87 @@ import { ChartBarIcon, ChatBubbleLeftIcon, ClockIcon, PlayIcon, PauseIcon } from
 
 // Components
 const CallCard = ({ call }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [audioLoaded, setAudioLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [audioError, setAudioError] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
   const audioRef = useRef(null);
-  const maxRetries = 3;
 
-  // Get base URL for API calls
-  const baseUrl = process.env.NODE_ENV === 'production' 
-    ? 'https://jtxviewer.onrender.com'
-    : 'http://localhost:3000';
-
-  const audioUrl = call.recording_url?.startsWith('http') 
-    ? call.recording_url 
-    : `${baseUrl}${call.recording_url}`;
-
-  // Format time in mm:ss
-  const formatTime = (time) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  // Function to retry loading audio
-  const retryLoadAudio = () => {
-    if (retryCount >= maxRetries) {
-      setAudioError('Maximum retry attempts reached. Please try again later.');
-      return;
-    }
-
-    console.log(`Retrying audio load (attempt ${retryCount + 1}/${maxRetries})...`);
-    setRetryCount(prev => prev + 1);
-    setAudioError(null);
-    setIsLoading(true);
-    
-    if (audioRef.current) {
-      audioRef.current.load();
+  const getSentimentColor = (sentiment) => {
+    switch (sentiment?.toLowerCase()) {
+      case 'positive': return 'bg-green-100 text-green-800';
+      case 'negative': return 'bg-red-100 text-red-800';
+      default: return 'bg-yellow-100 text-yellow-800';
     }
   };
 
-  // Load audio when recording URL changes
   useEffect(() => {
-    if (!audioUrl) {
-      setAudioError('No recording URL available');
-      return;
-    }
-    
-    console.log('Loading audio from URL:', audioUrl);
-    setIsLoading(true);
-    setAudioError(null);
-
     if (audioRef.current) {
       const audio = audioRef.current;
 
-      const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-      const onLoadedMetadata = () => {
+      const handleLoadedMetadata = () => {
         setDuration(audio.duration);
-        setAudioLoaded(true);
         setIsLoading(false);
-        setAudioError(null);
-        setRetryCount(0); // Reset retry count on successful load
       };
-      const onEnded = () => {
+
+      const handleTimeUpdate = () => {
+        setCurrentTime(audio.currentTime);
+      };
+
+      const handleEnded = () => {
         setIsPlaying(false);
         setCurrentTime(0);
       };
-      const onError = (e) => {
-        console.error('Audio error:', e);
-        console.error('Audio error details:', {
-          error: e.target.error,
-          networkState: e.target.networkState,
-          readyState: e.target.readyState,
-          url: audioUrl,
-          retryCount
-        });
 
-        let errorMessage = 'Failed to load audio recording.';
-        if (e.target.error) {
-          switch (e.target.error.code) {
-            case e.target.error.MEDIA_ERR_ABORTED:
-              errorMessage = 'Audio loading was aborted.';
-              break;
-            case e.target.error.MEDIA_ERR_NETWORK:
-              errorMessage = 'Network error while loading audio.';
-              break;
-            case e.target.error.MEDIA_ERR_DECODE:
-              errorMessage = 'Audio decoding error.';
-              break;
-            case e.target.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-              errorMessage = 'Audio format not supported.';
-              break;
-          }
-        }
-
-        setAudioError(`${errorMessage} ${retryCount < maxRetries ? 'Retrying...' : 'Please try again.'}`);
-        setAudioLoaded(false);
-        setIsPlaying(false);
-        setIsLoading(false);
-
-        if (retryCount < maxRetries) {
-          setTimeout(retryLoadAudio, 2000); // Retry after 2 seconds
-        }
-      };
-      const onLoadStart = () => {
-        setAudioLoaded(false);
-        setAudioError(null);
-        setIsLoading(true);
-      };
-      const onCanPlayThrough = () => {
-        setAudioLoaded(true);
-        setAudioError(null);
-        setIsLoading(false);
-        setRetryCount(0); // Reset retry count on successful load
-      };
-      const onAbort = () => {
-        setAudioLoaded(false);
-        setAudioError('Audio loading was aborted');
-        setIsPlaying(false);
+      const handleError = (e) => {
+        setAudioError('Error loading audio. Click to retry.');
         setIsLoading(false);
       };
-      const onStalled = () => {
-        console.warn('Audio playback stalled:', {
-          networkState: audio.networkState,
-          readyState: audio.readyState,
-          currentTime: audio.currentTime,
-          url: audioUrl
-        });
-        setAudioError('Audio playback stalled. Please try again.');
-        setIsPlaying(false);
-        setIsLoading(false);
-      };
-      const onWaiting = () => {
-        setAudioLoaded(false);
-        setIsLoading(true);
-      };
-      const onPlaying = () => {
-        setAudioLoaded(true);
-        setAudioError(null);
-        setIsLoading(false);
-        setRetryCount(0); // Reset retry count on successful playback
-      };
 
-      audio.addEventListener('timeupdate', onTimeUpdate);
-      audio.addEventListener('loadedmetadata', onLoadedMetadata);
-      audio.addEventListener('ended', onEnded);
-      audio.addEventListener('error', onError);
-      audio.addEventListener('loadstart', onLoadStart);
-      audio.addEventListener('canplaythrough', onCanPlayThrough);
-      audio.addEventListener('abort', onAbort);
-      audio.addEventListener('stalled', onStalled);
-      audio.addEventListener('waiting', onWaiting);
-      audio.addEventListener('playing', onPlaying);
-
-      // Reset state when URL changes
-      setAudioLoaded(false);
-      setAudioError(null);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsPlaying(false);
-      setIsLoading(true);
-      setRetryCount(0);
+      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.addEventListener('timeupdate', handleTimeUpdate);
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('error', handleError);
 
       return () => {
-        audio.removeEventListener('timeupdate', onTimeUpdate);
-        audio.removeEventListener('loadedmetadata', onLoadedMetadata);
-        audio.removeEventListener('ended', onEnded);
-        audio.removeEventListener('error', onError);
-        audio.removeEventListener('loadstart', onLoadStart);
-        audio.removeEventListener('canplaythrough', onCanPlayThrough);
-        audio.removeEventListener('abort', onAbort);
-        audio.removeEventListener('stalled', onStalled);
-        audio.removeEventListener('waiting', onWaiting);
-        audio.removeEventListener('playing', onPlaying);
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('error', handleError);
       };
     }
-  }, [audioUrl]);
+  }, []);
 
   const togglePlayPause = () => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
-        audioRef.current.play().catch(error => {
-          console.error('Error playing audio:', error);
-          setAudioError('Failed to play audio. Please try again.');
-        });
+        audioRef.current.play();
       }
       setIsPlaying(!isPlaying);
     }
   };
 
-  // Get sentiment color based on value
-  const getSentimentColor = (sentiment) => {
-    switch(sentiment?.toLowerCase()) {
-      case 'positive': return 'text-green-600';
-      case 'negative': return 'text-red-600';
-      default: return 'text-yellow-600';
+  const retryLoadAudio = () => {
+    setAudioError(null);
+    setIsLoading(true);
+    if (audioRef.current) {
+      audioRef.current.load();
     }
+  };
+
+  const formatTime = (time) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const formatAssessment = (assessment) => {
     if (!assessment) return null;
     
-    // Split the assessment into sections
     const sections = assessment.split(/\d+\.\s+/).filter(Boolean);
     return sections.map((section, index) => {
       const title = section.split('\n')[0].trim();
@@ -232,17 +105,17 @@ const CallCard = ({ call }) => {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h3 className="text-lg font-semibold text-gray-800">
-              {call.caller.name}
+              {call.caller?.name || 'Unknown Caller'}
             </h3>
             <span className="text-sm text-gray-500">
-              {call.caller.phone}
+              {call.caller?.phone || 'No phone number'}
             </span>
             <span className={`px-2 py-1 rounded-full text-sm font-medium ${getSentimentColor(call.sentiment)}`}>
-              {call.sentiment}
+              {call.sentiment || 'neutral'}
             </span>
           </div>
           <p className="text-sm text-gray-500">
-            {format(new Date(call.timestamp), 'MMM d, yyyy h:mm a')}
+            {new Date(call.timestamp).toLocaleString()}
           </p>
         </div>
         <button
@@ -251,6 +124,11 @@ const CallCard = ({ call }) => {
         >
           {isExpanded ? 'Show Less' : 'Show More'}
         </button>
+      </div>
+
+      <div className="mt-4">
+        <h3 className="text-md font-semibold text-gray-800 mb-2">Summary</h3>
+        <p className="text-gray-600">{call.summary}</p>
       </div>
 
       {isExpanded && (
@@ -276,50 +154,40 @@ const CallCard = ({ call }) => {
                 <button
                   onClick={audioError ? retryLoadAudio : togglePlayPause}
                   disabled={isLoading}
-                  className={`flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
+                  className={`flex items-center justify-center px-4 py-2 rounded transition-all duration-200 ${
                     isLoading
-                      ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed'
+                      ? 'bg-gray-200 cursor-not-allowed'
                       : audioError
-                      ? 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 transform hover:scale-105'
-                      : 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transform hover:scale-105'
+                      ? 'bg-red-500 hover:bg-red-600'
+                      : 'bg-blue-500 hover:bg-blue-600'
                   } text-white`}
-                  aria-label={audioError ? 'Retry' : isPlaying ? 'Pause' : 'Play'}
                 >
                   {isLoading ? (
                     <div className="w-5 h-5 relative">
                       <div className="w-full h-full rounded-full border-2 border-t-blue-200 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
                     </div>
                   ) : audioError ? (
-                    <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                    </svg>
+                    'Retry'
                   ) : isPlaying ? (
-                    <PauseIcon className="h-5 w-5" />
+                    'Pause'
                   ) : (
-                    <PlayIcon className="h-5 w-5 ml-0.5" />
+                    'Play'
                   )}
                 </button>
-
-                <div className="flex-1 space-y-2">
-                  <div className="relative w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="absolute left-0 top-0 h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-100"
-                      style={{ width: `${(currentTime / duration) * 100}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>{formatTime(currentTime)}</span>
-                    <span>{formatTime(duration)}</span>
-                  </div>
+                <div className="flex-1">
+                  <audio
+                    ref={audioRef}
+                    src={call.recording_url}
+                    preload="metadata"
+                    className="w-full"
+                    controls
+                  />
                 </div>
               </div>
 
               {audioError && (
-                <div className="mt-2 text-red-500 dark:text-red-400 text-sm flex items-center space-x-1">
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  <span>{audioError}</span>
+                <div className="mt-2 text-red-500 text-sm">
+                  {audioError}
                 </div>
               )}
             </div>
