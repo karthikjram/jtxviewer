@@ -409,6 +409,32 @@ app.get('/calls', (req, res) => {
 
 const processedCalls = new Set();
 
+async function extractCustomerName(transcript) {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "Extract only the customer's full name from the provided conversation transcript. If the name is not mentioned or unclear, respond with 'Unknown Caller'. Return only the name or 'Unknown Caller', no other text."
+        },
+        {
+          role: "user",
+          content: transcript
+        }
+      ],
+      temperature: 0,
+      max_tokens: 20
+    });
+
+    const name = completion.choices[0].message.content.trim();
+    return name === 'Unknown Caller' ? 'Unknown Caller' : name;
+  } catch (error) {
+    console.error('Error extracting customer name:', error);
+    return 'Unknown Caller';
+  }
+}
+
 // Webhook endpoint
 app.post('/webhook', async (req, res) => {
   const { event, call } = req.body;
@@ -428,20 +454,13 @@ app.post('/webhook', async (req, res) => {
       caller_name: 'Unknown Caller',
       caller_phone: call.caller?.phoneNumber || 'Unknown Number',
       sentiment: 'neutral',
+      summary: call.shortSummary || 'Call transcript',
       recording_url: process.env.NODE_ENV === 'production'
         ? `https://jtxviewer.onrender.com/calls/${call.callId}/recording`
         : `http://localhost:3000/calls/${call.callId}/recording`
     };
     
-    // Extract caller name from transcript if available
-    const nameMatch = call.shortSummary?.match(/My name is ([^.\n]+)/i);
-    if (nameMatch) {
-      callData.caller_name = nameMatch[1].trim();
-    }
-    
-    callData.summary = call.shortSummary || 'Call transcript';
-    
-    // Fetch messages from Ultravox API
+    // Fetch messages from Ultravox API to get transcript
     try {
       const options = {
         method: 'GET',
@@ -465,6 +484,12 @@ app.post('/webhook', async (req, res) => {
         .join('\n');
         
       callData.transcript = messageTexts || 'No transcript available';
+      
+      // Extract customer name from transcript using OpenAI
+      if (callData.transcript !== 'No transcript available') {
+        callData.caller_name = await extractCustomerName(callData.transcript);
+      }
+      
     } catch (error) {
       console.error('Error fetching messages:', error);
       callData.transcript = 'Error fetching transcript';
@@ -492,7 +517,7 @@ app.post('/webhook', async (req, res) => {
         callData.sentiment,
         callData.summary,
         callData.recording_url,
-        function(err) { // Using function to get 'this' context
+        function(err) {
           if (err) {
             console.error('Error inserting call:', err);
             throw err;
@@ -518,7 +543,6 @@ app.post('/webhook', async (req, res) => {
       console.error('Error saving call:', err);
       res.status(500).json({ error: 'Failed to save call' });
     }
-
   } 
 });
 
