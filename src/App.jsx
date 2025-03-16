@@ -201,7 +201,7 @@ const CallListItem = ({ call, isSelected, onClick }) => {
   return (
     <div 
       onClick={onClick}
-      className={`cursor-pointer p-4 ${isSelected ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-slate-50 border-l-4 border-transparent'} transition-all duration-200`}
+      className={`cursor-pointer p-4 ${isSelected ? 'bg-indigo-50 border border-indigo-500' : 'hover:bg-slate-50'} transition-all duration-200`}
     >
       <div className="flex justify-between items-start">
         <div>
