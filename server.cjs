@@ -444,30 +444,28 @@ async function assessAgentPerformance(transcript) {
       messages: [
         {
           role: "system",
-          content: `You are an expert customer support coach. Analyze the following conversation transcript between a customer and an agent, and provide a detailed performance assessment of the agent.
+          content: `You are an expert customer experience analyst. Analyze the provided transcript between a customer and an AI support agent. Provide concise, customer-focused insights in the following categories:
 
-IMPORTANT: For each category below, provide ONLY 5-7 words as your assessment. Be extremely concise.
+IMPORTANT: Answer each category with 3-7 words ONLY. Do NOT explain your reasoning.
 
-Include these categories clearly:
+1. Sentiment: [Positive/Neutral/Negative]
+2. Sentiment Progression: [Improved/Deteriorated/Same]
+3. Frustration Level: [High/Medium/Low]
+4. Resolution Confidence: [High/Moderate/Low]
+5. Escalation Needed: [Yes/No]
+6. Repeat Contact Likelihood: [High/Moderate/Low]
+7. Customer Intents: [Complaint/Query/Feedback/Support] can have multiple intents comma seperated
+8. Key Issue: [Short phrase identifying core issue]
+9. Suggested Next Step: [Short recommended follow-up action]
+10. Tags: [Up to 5 comma-separated short tags]
+11. Escalation Recommended: [Yes/No]
+12. Proactive Opportunity: [Up-sell/Cross-sell/None]
+13. Churn Risk: [High/Medium/Low]
+14. Customer Satisfaction: [High/Moderate/Low]
+15. NPS Prediction: [Promoter/Passive/Detractor]
+16. Issue Complexity: [High/Medium/Low]
 
-1. Communication Skills (clarity, professionalism, active listening)
-2. Emotional Intelligence (empathy, patience, rapport-building)
-3. Problem-Solving Ability (effectiveness, solution clarity)
-4. Compliance and Procedure Adherence (did the agent follow expected policies?)
-5. Customer Sentiment Progression (Evaluate if the customer's sentiment improved, deteriorated, or stayed the same over the conversation. Answer briefly (Improved, Deteriorated, Same))
-6. Resolution Confidence (Predict how confident the customer feels that their issue was resolved by the end of the call. Possible outputs: High Confidence, Moderate Confidence, Low Confidence, Not Resolved)
-7. Tags (Extract up to 5 concise, relevant tags from the given call transcript. Tags should represent the main topics or issues discussed, in single words or short phrases, comma-separated.)
-
-FORMAT YOUR RESPONSE AS:
-1. Communication: [5-7 word assessment]
-2. EQ: [5-7 word assessment]
-3. Problem-Solving: [5-7 word assessment]
-4. Compliance: [5-7 word assessment]
-5. Sentiment: [one word: Improved/Deteriorated/Same]
-6. Resolution: [one word: High/Moderate/Low/Unresolved]
-7. Tags: [up to 5 comma-separated tags]
-
-Be precise and actionable.`
+Be consistent, precise, and strictly concise.`;
         },
         {
           role: "user",
