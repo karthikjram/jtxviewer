@@ -452,11 +452,10 @@ Include these categories clearly:
 2. Emotional Intelligence (empathy, patience, rapport-building)
 3. Problem-Solving Ability (effectiveness, solution clarity)
 4. Compliance and Procedure Adherence (did the agent follow expected policies?)
-5. Strengths
-6. Areas for Improvement
-7. Specific Coaching Recommendations
-
-Be precise, constructive, and actionable.`
+5. Customer Sentiment Progression (Evaluate if the customer's sentiment improved, deteriorated, or stayed the same over the conversation. Answer briefly (Improved, Deteriorated, Same))
+6. Resolution Confidence (Predict how confident the customer feels that their issue was resolved by the end of the call. Possible outputs: High Confidence, Moderate Confidence, Low Confidence, Not Resolved)
+7. Tags (Extract up to 5 concise, relevant tags from the given call transcript. Tags should represent the main topics or issues discussed, in single words or short phrases, comma-separated.)
+Be precise, concise, constructive, and actionable.`
         },
         {
           role: "user",
