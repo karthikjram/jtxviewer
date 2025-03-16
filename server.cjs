@@ -62,6 +62,7 @@ function initializeDatabase() {
               caller_phone TEXT NOT NULL,
               sentiment TEXT NOT NULL,
               summary TEXT NOT NULL,
+              agent_assessment TEXT,
               recording_url TEXT,
               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               UNIQUE(id)
@@ -360,7 +361,7 @@ app.get('/calls', (req, res) => {
   console.log('GET /calls - Request received');
   
   db.all(`
-    SELECT id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url
+    SELECT id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url, agent_assessment
     FROM calls 
     ORDER BY timestamp DESC
   `, [], async (err, rows) => {
@@ -385,7 +386,8 @@ app.get('/calls', (req, res) => {
           },
           sentiment: row.sentiment?.toLowerCase() || 'neutral',
           summary: row.summary,
-          recording_url: row.recording_url
+          recording_url: row.recording_url,
+          agent_assessment: row.agent_assessment
         };
         return formattedCall;
       });
@@ -435,6 +437,43 @@ async function extractCustomerName(transcript) {
   }
 }
 
+async function assessAgentPerformance(transcript) {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert customer support coach. Analyze the following conversation transcript between a customer and an agent, and provide a detailed performance assessment of the agent.
+
+Include these categories clearly:
+
+1. Communication Skills (clarity, professionalism, active listening)
+2. Emotional Intelligence (empathy, patience, rapport-building)
+3. Problem-Solving Ability (effectiveness, solution clarity)
+4. Compliance and Procedure Adherence (did the agent follow expected policies?)
+5. Strengths
+6. Areas for Improvement
+7. Specific Coaching Recommendations
+
+Be precise, constructive, and actionable.`
+        },
+        {
+          role: "user",
+          content: transcript
+        }
+      ],
+      temperature: 0.4,
+      max_tokens: 1000
+    });
+
+    return completion.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('Error assessing agent performance:', error);
+    return 'Error generating agent assessment';
+  }
+}
+
 // Webhook endpoint
 app.post('/webhook', async (req, res) => {
   const { event, call } = req.body;
@@ -455,6 +494,7 @@ app.post('/webhook', async (req, res) => {
       caller_phone: call.caller?.phoneNumber || 'Unknown Number',
       sentiment: 'neutral',
       summary: call.shortSummary || 'Call transcript',
+      agent_assessment: null,
       recording_url: process.env.NODE_ENV === 'production'
         ? `https://jtxviewer.onrender.com/calls/${call.callId}/recording`
         : `http://localhost:3000/calls/${call.callId}/recording`
@@ -488,6 +528,8 @@ app.post('/webhook', async (req, res) => {
       // Extract customer name from transcript using OpenAI
       if (callData.transcript !== 'No transcript available') {
         callData.caller_name = await extractCustomerName(callData.transcript);
+        callData.sentiment = await analyzeSentiment(callData.transcript);
+        callData.agent_assessment = await assessAgentPerformance(callData.transcript);
       }
       
     } catch (error) {
@@ -495,17 +537,14 @@ app.post('/webhook', async (req, res) => {
       callData.transcript = 'Error fetching transcript';
     }
 
-    // Analyze sentiment using OpenAI
-    callData.sentiment = await analyzeSentiment(callData.transcript);
-
     processedCalls.add(call.callId); // Mark this call ID as processed
 
     // Save to database
     try {
       console.log('Saving call to database:', callData);
       const stmt = db.prepare(`
-        INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, recording_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO calls (id, timestamp, transcript, caller_name, caller_phone, sentiment, summary, agent_assessment, recording_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -516,6 +555,7 @@ app.post('/webhook', async (req, res) => {
         callData.caller_phone,
         callData.sentiment,
         callData.summary,
+        callData.agent_assessment,
         callData.recording_url,
         function(err) {
           if (err) {
