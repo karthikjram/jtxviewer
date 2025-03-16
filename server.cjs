@@ -446,6 +446,8 @@ async function assessAgentPerformance(transcript) {
           role: "system",
           content: `You are an expert customer support coach. Analyze the following conversation transcript between a customer and an agent, and provide a detailed performance assessment of the agent.
 
+IMPORTANT: For each category below, provide ONLY 5-7 words as your assessment. Be extremely concise.
+
 Include these categories clearly:
 
 1. Communication Skills (clarity, professionalism, active listening)
@@ -455,7 +457,17 @@ Include these categories clearly:
 5. Customer Sentiment Progression (Evaluate if the customer's sentiment improved, deteriorated, or stayed the same over the conversation. Answer briefly (Improved, Deteriorated, Same))
 6. Resolution Confidence (Predict how confident the customer feels that their issue was resolved by the end of the call. Possible outputs: High Confidence, Moderate Confidence, Low Confidence, Not Resolved)
 7. Tags (Extract up to 5 concise, relevant tags from the given call transcript. Tags should represent the main topics or issues discussed, in single words or short phrases, comma-separated.)
-Be precise, concise, constructive, and actionable.`
+
+FORMAT YOUR RESPONSE AS:
+1. Communication: [5-7 word assessment]
+2. EQ: [5-7 word assessment]
+3. Problem-Solving: [5-7 word assessment]
+4. Compliance: [5-7 word assessment]
+5. Sentiment: [one word: Improved/Deteriorated/Same]
+6. Resolution: [one word: High/Moderate/Low/Unresolved]
+7. Tags: [up to 5 comma-separated tags]
+
+Be precise and actionable.`
         },
         {
           role: "user",
