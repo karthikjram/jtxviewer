@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { format } from 'date-fns';
 import { ChartBarIcon, ChatBubbleLeftIcon, ClockIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
+import twilio from 'twilio';
+import https from 'https';
 
 // Components
 const CallCard = ({ call, isSelected }) => {
@@ -201,7 +203,7 @@ const CallListItem = ({ call, isSelected, onClick }) => {
   return (
     <div 
       onClick={onClick}
-      className={`cursor-pointer p-4 ${isSelected ? 'bg-indigo-50 border border-indigo-500' : 'hover:bg-slate-50'} transition-all duration-200`}
+      className={`cursor-pointer p-4 ${isSelected ? 'bg-indigo-50 border border-indigo-500' : 'bg-slate-100 hover:bg-slate-200'} transition-all duration-200`}
     >
       <div className="flex justify-between items-start">
         <div>
@@ -226,11 +228,54 @@ const CallListItem = ({ call, isSelected, onClick }) => {
   );
 };
 
+const TWILIO_ACCOUNT_SID = 'your_twilio_account_sid_here';
+const TWILIO_AUTH_TOKEN = 'your_twilio_auth_token_here';
+const TWILIO_PHONE_NUMBER = 'your_twilio_phone_number_here';
+
+const ULTRAVOX_API_KEY = 'your_ultravox_api_key_here';
+const SYSTEM_PROMPT = 'Your name is Steve and you are calling a person on the phone. Ask them their name and see how they are doing.';
+
+const ULTRAVOX_CALL_CONFIG = {
+    systemPrompt: SYSTEM_PROMPT,
+    model: 'fixie-ai/ultravox',
+    voice: 'Mark',
+    temperature: 0.3,
+    firstSpeaker: 'FIRST_SPEAKER_USER',
+    medium: { "twilio": {} }
+};
+
+const ULTRAVOX_API_URL = 'https://api.ultravox.ai/api/calls';
+
+async function createUltravoxCall() {
+    const request = https.request(ULTRAVOX_API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': ULTRAVOX_API_KEY
+        }
+    });
+
+    return new Promise((resolve, reject) => {
+        let data = '';
+
+        request.on('response', (response) => {
+            response.on('data', chunk => data += chunk);
+            response.on('end', () => resolve(JSON.parse(data)));
+        });
+
+        request.on('error', reject);
+        request.write(JSON.stringify(ULTRAVOX_CALL_CONFIG));
+        request.end();
+    });
+}
+
 const App = () => {
   const [calls, setCalls] = useState([]);
   const [selectedCall, setSelectedCall] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [isCallLoading, setIsCallLoading] = useState(false);
 
   // Get base URL for API calls
   const baseUrl = process.env.NODE_ENV === 'production' 
@@ -319,24 +364,79 @@ const App = () => {
             </p>
           </div>
         ) : (
-          <div className="flex h-[calc(100vh-4rem)]">
-            {/* Left Panel - Call List */}
-            <div className="w-1/3 border-r border-slate-200 overflow-y-auto">
-              <div className="divide-y divide-slate-200">
-                {calls.map(call => (
-                  <CallListItem 
-                    key={call.id} 
-                    call={call}
-                    isSelected={selectedCall?.id === call.id}
-                    onClick={() => handleCallSelect(call)}
-                  />
-                ))}
+          <div className="flex flex-col h-[calc(100vh-4rem)]">
+            <div className="flex flex-1">
+              {/* Left Panel - Call List */}
+              <div className="w-1/3 border-r border-slate-200 overflow-y-auto">
+                <div className="divide-y divide-slate-200">
+                  {calls.map(call => (
+                    <CallListItem 
+                      key={call.id} 
+                      call={call}
+                      isSelected={selectedCall?.id === call.id}
+                      onClick={() => handleCallSelect(call)}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              {/* Right Panel - Call Details */}
+              <div className="w-2/3 overflow-y-auto p-8">
+                {selectedCall && <CallCard call={selectedCall} isSelected={true} />}
               </div>
             </div>
-            
-            {/* Right Panel - Call Details */}
-            <div className="w-2/3 overflow-y-auto p-8">
-              {selectedCall && <CallCard call={selectedCall} isSelected={true} />}
+
+            {/* Bottom Panel - Make Call */}
+            <div className="border-t border-slate-200 bg-white p-4">
+              <div className="max-w-lg mx-auto flex gap-4">
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="Enter phone number"
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+                <button
+                  onClick={async () => {
+                    if (!phoneNumber) return;
+                    setIsCallLoading(true);
+                    try {
+                      console.log('Creating Ultravox call...');
+                      const { joinUrl } = await createUltravoxCall();
+                      console.log('Got joinUrl:', joinUrl);
+
+                      const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+                      const call = await client.calls.create({
+                        twiml: `<Response><Connect><Stream url="${joinUrl}"/></Connect></Response>`,
+                        to: phoneNumber,
+                        from: TWILIO_PHONE_NUMBER
+                      });
+
+                      console.log('Call initiated:', call.sid);
+                    } catch (error) {
+                      console.error('Error:', error.message);
+                      setError('Failed to initiate call. Please try again.');
+                    } finally {
+                      setIsCallLoading(false);
+                      setPhoneNumber('');
+                    }
+                  }}
+                  disabled={isCallLoading || !phoneNumber}
+                  className={`px-6 py-2 rounded-lg font-medium ${
+                    isCallLoading || !phoneNumber
+                      ? 'bg-slate-300 cursor-not-allowed'
+                      : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                  }`}
+                >
+                  {isCallLoading ? (
+                    <div className="w-5 h-5 relative">
+                      <div className="w-full h-full rounded-full border-2 border-t-white border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                    </div>
+                  ) : (
+                    'Make Call'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
