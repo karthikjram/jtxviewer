@@ -662,7 +662,8 @@ const ULTRAVOX_CALL_CONFIG = {
     voice: 'Krishna-Hindi-Urdu',
     temperature: 0.3,
     firstSpeaker: 'FIRST_SPEAKER_USER',
-    medium: { "twilio": {} }
+    medium: { "twilio": {} },
+    recordingEnabled: true
 };
 
 async function createUltravoxCall() {
@@ -817,12 +818,12 @@ app.post('/make-call', async (req, res) => {
   }
 });
 
-// Webhook endpoint for call status updates
-app.post('/webhook', (req, res) => {
-  const callStatus = req.body;
-  console.log('Call status update:', JSON.stringify(callStatus, null, 2));
-  res.sendStatus(200);
-});
+// // Webhook endpoint for call status updates
+// app.post('/webhook', (req, res) => {
+//   const callStatus = req.body;
+//   console.log('Call status update:', JSON.stringify(callStatus, null, 2));
+//   res.sendStatus(200);
+// });
 
 // Serve static files from the dist directory AFTER API routes
 app.use(express.static(path.join(__dirname, 'dist')));
