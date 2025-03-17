@@ -660,15 +660,17 @@ const ULTRAVOX_CALL_CONFIG = {
     systemPrompt: SYSTEM_PROMPT,
     model: 'fixie-ai/ultravox',
     voice: 'Krishna-Hindi-Urdu',
-    temperature: 0.3,
-    firstSpeaker: 'FIRST_SPEAKER_ASSISTANT',
+    temperature: 0.7,
+    firstSpeaker: 'assistant',
     recordingEnabled: true,
-    medium: { 
-      "twilio": {
-        "statusCallback": process.env.NODE_ENV === 'production' 
-          ? 'https://jtxviewer.onrender.com/webhook'
-          : 'http://localhost:3000/webhook'
-      } 
+    medium: 'twilio',
+    webhookUrl: process.env.NODE_ENV === 'production' 
+        ? 'https://jtxviewer.onrender.com/webhook'
+        : 'http://localhost:3000/webhook',
+    metadata: {
+        type: 'outbound',
+        purpose: 'customer_service',
+        language: 'hi-IN'
     }
 };
 
