@@ -662,7 +662,7 @@ const ULTRAVOX_CALL_CONFIG = {
     voice: 'Krishna-Hindi-Urdu',
     temperature: 0.3,
     firstSpeaker: 'FIRST_SPEAKER_USER',
-    medium: { "twilio": {} },
+    medium: { twilio: {} },
     recordingEnabled: true
 };
 
@@ -794,9 +794,9 @@ app.post('/make-call', async (req, res) => {
       twiml: twiml,
       to: formattedPhoneNumber,
       from: TWILIO_PHONE_NUMBER,
-      statusCallback: process.env.NODE_ENV === 'production' 
-        ? 'https://jtxviewer.onrender.com/webhook'
-        : 'http://localhost:3000/webhook'
+      // statusCallback: process.env.NODE_ENV === 'production' 
+      //   ? 'https://jtxviewer.onrender.com/webhook'
+      //   : 'http://localhost:3000/webhook'
       // statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
       // statusCallbackMethod: 'POST'
     });
