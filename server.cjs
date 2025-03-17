@@ -635,38 +635,100 @@ const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
 // Ultravox configuration
 const ULTRAVOX_API_KEY = process.env.ULTRAVOX_API_KEY;
+const ULTRAVOX_API_URL = 'https://api.ultravox.ai/v1/calls';  
 const SYSTEM_PROMPT = 'Your name is Krishna, a customer relationship manager. You are an employee of Jio in India. You are calling a person on the phone for sales of Jio Products or issue followup. Ask them their name and see how they are doing. You have to answer all the questions they ask you in a patient and friendly manner. Keep your answers and conversations crisp, concise and to the point.';
+
+// Format phone number to E.164 format
+function formatPhoneNumber(phoneNumber) {
+  // Remove all non-digit characters
+  let cleaned = phoneNumber.replace(/\D/g, '');
+  
+  // For India numbers
+  if (!cleaned.startsWith('91') && cleaned.length === 10) {
+    cleaned = '91' + cleaned;
+  }
+  
+  // Add + prefix if not present
+  if (!cleaned.startsWith('+')) {
+    cleaned = '+' + cleaned;
+  }
+  
+  return cleaned;
+}
 
 const ULTRAVOX_CALL_CONFIG = {
     systemPrompt: SYSTEM_PROMPT,
     model: 'fixie-ai/ultravox',
     voice: 'Krishna-Hindi-Urdu',
     temperature: 0.3,
-    firstSpeaker: 'FIRST_SPEAKER_USER',
-    medium: { "twilio": {} }
+    firstSpeaker: 'FIRST_SPEAKER_ASSISTANT',
+    recordingEnabled: true,
+    medium: { 
+      "twilio": {
+        "statusCallback": process.env.NODE_ENV === 'production' 
+          ? 'https://jtxviewer.onrender.com/webhook'
+          : 'http://localhost:3000/webhook'
+      } 
+    }
 };
 
-const ULTRAVOX_API_URL = 'https://api.ultravox.ai/api/calls';
-
 async function createUltravoxCall() {
-    const request = https.request(ULTRAVOX_API_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': ULTRAVOX_API_KEY
-        }
-    });
+    if (!ULTRAVOX_API_KEY) {
+        throw new Error('Ultravox API Key is missing');
+    }
 
+    console.log('Creating Ultravox call with config:', {
+        ...ULTRAVOX_CALL_CONFIG,
+        systemPrompt: '(hidden)',
+        voice: ULTRAVOX_CALL_CONFIG.voice,
+        model: ULTRAVOX_CALL_CONFIG.model
+    });
+    
     return new Promise((resolve, reject) => {
+        const request = https.request(ULTRAVOX_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': ULTRAVOX_API_KEY
+            }
+        });
+
         let data = '';
 
         request.on('response', (response) => {
+            console.log('Ultravox API response status:', response.statusCode);
+            console.log('Ultravox API response headers:', response.headers);
+
+            if (response.statusCode !== 200) {
+                console.error('Ultravox API error:', response.statusCode);
+            }
+            
             response.on('data', chunk => data += chunk);
-            response.on('end', () => resolve(JSON.parse(data)));
+            response.on('end', () => {
+                try {
+                    const parsedData = JSON.parse(data);
+                    console.log('Ultravox response:', parsedData);
+                    if (!parsedData.joinUrl) {
+                        reject(new Error('No joinUrl in Ultravox response'));
+                        return;
+                    }
+                    resolve(parsedData);
+                } catch (error) {
+                    console.error('Error parsing Ultravox response:', error);
+                    console.error('Raw response:', data);
+                    reject(error);
+                }
+            });
         });
 
-        request.on('error', reject);
-        request.write(JSON.stringify(ULTRAVOX_CALL_CONFIG));
+        request.on('error', (error) => {
+            console.error('Ultravox request error:', error);
+            reject(error);
+        });
+        
+        const payload = JSON.stringify(ULTRAVOX_CALL_CONFIG);
+        console.log('Ultravox request payload:', payload);
+        request.write(payload);
         request.end();
     });
 }
@@ -679,7 +741,10 @@ app.post('/make-call', async (req, res) => {
     return res.status(400).json({ error: 'Phone number is required' });
   }
 
-  // Check each Twilio config separately
+  // Check configurations
+  if (!ULTRAVOX_API_KEY) {
+    return res.status(500).json({ error: 'Ultravox API Key is missing' });
+  }
   if (!TWILIO_ACCOUNT_SID) {
     return res.status(500).json({ error: 'Twilio Account SID is missing' });
   }
@@ -691,25 +756,56 @@ app.post('/make-call', async (req, res) => {
   }
 
   try {
+    console.log('Original phone number:', phoneNumber);
+    const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
+    console.log('Formatted phone number:', formattedPhoneNumber);
+
     console.log('Creating Ultravox call...');
-    const { joinUrl } = await createUltravoxCall();
-    console.log('Got joinUrl:', joinUrl);
+    const ultravoxResponse = await createUltravoxCall();
+    console.log('Full Ultravox response:', ultravoxResponse);
+    
+    if (!ultravoxResponse.joinUrl) {
+      throw new Error('No joinUrl received from Ultravox');
+    }
+    console.log('Got joinUrl:', ultravoxResponse.joinUrl);
 
     const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+    console.log('Twilio config:', {
+      from: TWILIO_PHONE_NUMBER,
+      to: formattedPhoneNumber,
+      statusCallback: process.env.NODE_ENV === 'production' 
+        ? 'https://jtxviewer.onrender.com/webhook'
+        : 'http://localhost:3000/webhook'
+    });
+
     const call = await client.calls.create({
-      twiml: `<Response><Connect><Stream url="${joinUrl}"/></Connect></Response>`,
-      to: phoneNumber,
-      from: TWILIO_PHONE_NUMBER
+      twiml: `<Response><Connect><Stream url="${ultravoxResponse.joinUrl}"/></Connect></Response>`,
+      to: formattedPhoneNumber,
+      from: TWILIO_PHONE_NUMBER,
+      statusCallback: process.env.NODE_ENV === 'production' 
+        ? 'https://jtxviewer.onrender.com/webhook'
+        : 'http://localhost:3000/webhook',
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      statusCallbackMethod: 'POST'
     });
 
     console.log('Call initiated:', call.sid);
+    console.log('Call status:', call.status);
+    console.log('Full call response:', call);
     res.json({ callSid: call.sid });
   } catch (error) {
-    console.error('Error making call:', error);
-    // Return more specific error message
+    console.error('Detailed error:', error);
+    console.error('Error stack:', error.stack);
     const errorMessage = error.message || 'Failed to initiate call';
     res.status(500).json({ error: errorMessage });
   }
+});
+
+// Webhook endpoint for call status updates
+app.post('/webhook', (req, res) => {
+  const callStatus = req.body;
+  console.log('Call status update:', JSON.stringify(callStatus, null, 2));
+  res.sendStatus(200);
 });
 
 // Serve static files from the dist directory AFTER API routes
