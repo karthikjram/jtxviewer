@@ -8,6 +8,8 @@ const path = require('path');
 const fetch = require('node-fetch');
 require('dotenv').config();
 const OpenAI = require('openai');
+const twilio = require('twilio');
+const https = require('https');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -625,6 +627,81 @@ async function analyzeSentiment(transcript) {
 function generateSummary(transcript) {
   return transcript.split(' ').slice(0, 20).join(' ') + '...';
 }
+
+// Twilio configuration
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+
+// Ultravox configuration
+const ULTRAVOX_API_KEY = process.env.ULTRAVOX_API_KEY;
+const SYSTEM_PROMPT = 'Your name is Krishna, a customer relationship manager. You are an employee of Jio in India. You are calling a person on the phone for sales of Jio Products or issue followup. Ask them their name and see how they are doing. You have to answer all the questions they ask you in a patient and friendly manner. Keep your answers and conversations crisp, concise and to the point.';
+
+const ULTRAVOX_CALL_CONFIG = {
+    systemPrompt: SYSTEM_PROMPT,
+    model: 'fixie-ai/ultravox',
+    voice: 'Krishna-Hindi-Urdu',
+    temperature: 0.3,
+    firstSpeaker: 'FIRST_SPEAKER_USER',
+    medium: { "twilio": {} }
+};
+
+const ULTRAVOX_API_URL = 'https://api.ultravox.ai/api/calls';
+
+async function createUltravoxCall() {
+    const request = https.request(ULTRAVOX_API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': ULTRAVOX_API_KEY
+        }
+    });
+
+    return new Promise((resolve, reject) => {
+        let data = '';
+
+        request.on('response', (response) => {
+            response.on('data', chunk => data += chunk);
+            response.on('end', () => resolve(JSON.parse(data)));
+        });
+
+        request.on('error', reject);
+        request.write(JSON.stringify(ULTRAVOX_CALL_CONFIG));
+        request.end();
+    });
+}
+
+// Make outbound call endpoint
+app.post('/make-call', async (req, res) => {
+  const { phoneNumber } = req.body;
+  
+  if (!phoneNumber) {
+    return res.status(400).json({ error: 'Phone number is required' });
+  }
+
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    return res.status(500).json({ error: 'Twilio configuration is missing' });
+  }
+
+  try {
+    console.log('Creating Ultravox call...');
+    const { joinUrl } = await createUltravoxCall();
+    console.log('Got joinUrl:', joinUrl);
+
+    const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+    const call = await client.calls.create({
+      twiml: `<Response><Connect><Stream url="${joinUrl}"/></Connect></Response>`,
+      to: phoneNumber,
+      from: TWILIO_PHONE_NUMBER
+    });
+
+    console.log('Call initiated:', call.sid);
+    res.json({ callSid: call.sid });
+  } catch (error) {
+    console.error('Error making call:', error);
+    res.status(500).json({ error: 'Failed to initiate call' });
+  }
+});
 
 // Serve static files from the dist directory AFTER API routes
 app.use(express.static(path.join(__dirname, 'dist')));

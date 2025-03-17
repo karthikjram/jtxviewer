@@ -2,8 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { format } from 'date-fns';
 import { ChartBarIcon, ChatBubbleLeftIcon, ClockIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
-import twilio from 'twilio';
-import https from 'https';
 
 // Components
 const CallCard = ({ call, isSelected }) => {
@@ -228,46 +226,6 @@ const CallListItem = ({ call, isSelected, onClick }) => {
   );
 };
 
-const TWILIO_ACCOUNT_SID = 'your_twilio_account_sid_here';
-const TWILIO_AUTH_TOKEN = 'your_twilio_auth_token_here';
-const TWILIO_PHONE_NUMBER = 'your_twilio_phone_number_here';
-
-const ULTRAVOX_API_KEY = 'your_ultravox_api_key_here';
-const SYSTEM_PROMPT = 'Your name is Steve and you are calling a person on the phone. Ask them their name and see how they are doing.';
-
-const ULTRAVOX_CALL_CONFIG = {
-    systemPrompt: SYSTEM_PROMPT,
-    model: 'fixie-ai/ultravox',
-    voice: 'Mark',
-    temperature: 0.3,
-    firstSpeaker: 'FIRST_SPEAKER_USER',
-    medium: { "twilio": {} }
-};
-
-const ULTRAVOX_API_URL = 'https://api.ultravox.ai/api/calls';
-
-async function createUltravoxCall() {
-    const request = https.request(ULTRAVOX_API_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': ULTRAVOX_API_KEY
-        }
-    });
-
-    return new Promise((resolve, reject) => {
-        let data = '';
-
-        request.on('response', (response) => {
-            response.on('data', chunk => data += chunk);
-            response.on('end', () => resolve(JSON.parse(data)));
-        });
-
-        request.on('error', reject);
-        request.write(JSON.stringify(ULTRAVOX_CALL_CONFIG));
-        request.end();
-    });
-}
 
 const App = () => {
   const [calls, setCalls] = useState([]);
@@ -401,18 +359,20 @@ const App = () => {
                     if (!phoneNumber) return;
                     setIsCallLoading(true);
                     try {
-                      console.log('Creating Ultravox call...');
-                      const { joinUrl } = await createUltravoxCall();
-                      console.log('Got joinUrl:', joinUrl);
-
-                      const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-                      const call = await client.calls.create({
-                        twiml: `<Response><Connect><Stream url="${joinUrl}"/></Connect></Response>`,
-                        to: phoneNumber,
-                        from: TWILIO_PHONE_NUMBER
+                      const response = await fetch(`${baseUrl}/make-call`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ phoneNumber }),
                       });
-
-                      console.log('Call initiated:', call.sid);
+                      
+                      if (!response.ok) {
+                        throw new Error('Failed to initiate call');
+                      }
+                      
+                      const data = await response.json();
+                      console.log('Call initiated:', data.callSid);
                     } catch (error) {
                       console.error('Error:', error.message);
                       setError('Failed to initiate call. Please try again.');
