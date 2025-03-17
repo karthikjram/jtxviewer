@@ -234,6 +234,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isCallLoading, setIsCallLoading] = useState(false);
+  const [callError, setCallError] = useState(null);
 
   // Get base URL for API calls
   const baseUrl = process.env.NODE_ENV === 'production' 
@@ -263,6 +264,7 @@ const App = () => {
           setSelectedCall(data[0]);
         }
         setLoading(false);
+        setError(null);
       } catch (err) {
         console.error('Error fetching calls:', err);
         setError('Failed to load calls. Please refresh the page.');
@@ -277,6 +279,35 @@ const App = () => {
 
   const handleCallSelect = (call) => {
     setSelectedCall(call);
+  };
+
+  const handleMakeCall = async () => {
+    if (!phoneNumber) return;
+    setIsCallLoading(true);
+    setCallError(null);
+    try {
+      const response = await fetch(`${baseUrl}/make-call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phoneNumber }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to initiate call');
+      }
+      
+      const data = await response.json();
+      console.log('Call initiated:', data.callSid);
+    } catch (error) {
+      console.error('Error:', error.message);
+      setCallError(error.message);
+    } finally {
+      setIsCallLoading(false);
+      setPhoneNumber('');
+    }
   };
 
   return (
@@ -323,7 +354,7 @@ const App = () => {
           </div>
         ) : (
           <div className="flex flex-col h-[calc(100vh-4rem)]">
-            <div className="flex flex-1">
+            <div className="flex flex-1 min-h-0">
               {/* Left Panel - Call List */}
               <div className="w-1/3 border-r border-slate-200 overflow-y-auto">
                 <div className="divide-y divide-slate-200">
@@ -346,56 +377,38 @@ const App = () => {
 
             {/* Bottom Panel - Make Call */}
             <div className="border-t border-slate-200 bg-white p-4">
-              <div className="max-w-lg mx-auto flex gap-4">
-                <input
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Enter phone number"
-                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-                <button
-                  onClick={async () => {
-                    if (!phoneNumber) return;
-                    setIsCallLoading(true);
-                    try {
-                      const response = await fetch(`${baseUrl}/make-call`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ phoneNumber }),
-                      });
-                      
-                      if (!response.ok) {
-                        throw new Error('Failed to initiate call');
-                      }
-                      
-                      const data = await response.json();
-                      console.log('Call initiated:', data.callSid);
-                    } catch (error) {
-                      console.error('Error:', error.message);
-                      setError('Failed to initiate call. Please try again.');
-                    } finally {
-                      setIsCallLoading(false);
-                      setPhoneNumber('');
-                    }
-                  }}
-                  disabled={isCallLoading || !phoneNumber}
-                  className={`px-6 py-2 rounded-lg font-medium ${
-                    isCallLoading || !phoneNumber
-                      ? 'bg-slate-300 cursor-not-allowed'
-                      : 'bg-indigo-500 hover:bg-indigo-600 text-white'
-                  }`}
-                >
-                  {isCallLoading ? (
-                    <div className="w-5 h-5 relative">
-                      <div className="w-full h-full rounded-full border-2 border-t-white border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-                    </div>
-                  ) : (
-                    'Make Call'
-                  )}
-                </button>
+              <div className="max-w-lg mx-auto">
+                {callError && (
+                  <div className="mb-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">
+                    {callError}
+                  </div>
+                )}
+                <div className="flex gap-4">
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="Enter phone number"
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={handleMakeCall}
+                    disabled={isCallLoading || !phoneNumber}
+                    className={`px-6 py-2 rounded-lg font-medium ${
+                      isCallLoading || !phoneNumber
+                        ? 'bg-slate-300 cursor-not-allowed'
+                        : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                    }`}
+                  >
+                    {isCallLoading ? (
+                      <div className="w-5 h-5 relative">
+                        <div className="w-full h-full rounded-full border-2 border-t-white border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                      </div>
+                    ) : (
+                      'Make Call'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
