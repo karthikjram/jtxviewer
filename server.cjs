@@ -635,7 +635,7 @@ const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
 // Ultravox configuration
 const ULTRAVOX_API_KEY = process.env.ULTRAVOX_API_KEY;
-const ULTRAVOX_API_URL = 'https://api.ultravox.ai/v1/calls';  
+const ULTRAVOX_API_URL = 'https://api.ultravox.ai/api/calls';  
 const SYSTEM_PROMPT = 'Your name is Krishna, a customer relationship manager. You are an employee of Jio in India. You are calling a person on the phone for sales of Jio Products or issue followup. Ask them their name and see how they are doing. You have to answer all the questions they ask you in a patient and friendly manner. Keep your answers and conversations crisp, concise and to the point.';
 
 // Format phone number to E.164 format
@@ -689,8 +689,10 @@ async function createUltravoxCall() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-Key': ULTRAVOX_API_KEY
-            }
+                'X-API-Key': ULTRAVOX_API_KEY,
+                'Accept': 'application/json'
+            },
+            timeout: 30000 // 30 second timeout
         });
 
         let data = '';
@@ -701,6 +703,8 @@ async function createUltravoxCall() {
 
             if (response.statusCode !== 200) {
                 console.error('Ultravox API error:', response.statusCode);
+                reject(new Error(`Ultravox API returned status ${response.statusCode}`));
+                return;
             }
             
             response.on('data', chunk => data += chunk);
@@ -724,6 +728,12 @@ async function createUltravoxCall() {
         request.on('error', (error) => {
             console.error('Ultravox request error:', error);
             reject(error);
+        });
+
+        request.on('timeout', () => {
+            console.error('Ultravox request timed out');
+            request.destroy();
+            reject(new Error('Request timed out'));
         });
         
         const payload = JSON.stringify(ULTRAVOX_CALL_CONFIG);
@@ -778,8 +788,11 @@ app.post('/make-call', async (req, res) => {
         : 'http://localhost:3000/webhook'
     });
 
+    const twiml = `<Response><Connect><Stream url="${ultravoxResponse.joinUrl}"/></Connect></Response>`;
+    console.log('TwiML:', twiml);
+
     const call = await client.calls.create({
-      twiml: `<Response><Connect><Stream url="${ultravoxResponse.joinUrl}"/></Connect></Response>`,
+      twiml: twiml,
       to: formattedPhoneNumber,
       from: TWILIO_PHONE_NUMBER,
       statusCallback: process.env.NODE_ENV === 'production' 
@@ -792,7 +805,12 @@ app.post('/make-call', async (req, res) => {
     console.log('Call initiated:', call.sid);
     console.log('Call status:', call.status);
     console.log('Full call response:', call);
-    res.json({ callSid: call.sid });
+    res.json({ 
+      callSid: call.sid,
+      status: call.status,
+      to: formattedPhoneNumber,
+      from: TWILIO_PHONE_NUMBER
+    });
   } catch (error) {
     console.error('Detailed error:', error);
     console.error('Error stack:', error.stack);
