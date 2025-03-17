@@ -660,18 +660,9 @@ const ULTRAVOX_CALL_CONFIG = {
     systemPrompt: SYSTEM_PROMPT,
     model: 'fixie-ai/ultravox',
     voice: 'Krishna-Hindi-Urdu',
-    temperature: 0.7,
-    firstSpeaker: 'assistant',
-    recordingEnabled: true,
-    medium: 'twilio',
-    webhookUrl: process.env.NODE_ENV === 'production' 
-        ? 'https://jtxviewer.onrender.com/webhook'
-        : 'http://localhost:3000/webhook',
-    metadata: {
-        type: 'outbound',
-        purpose: 'customer_service',
-        language: 'hi-IN'
-    }
+    temperature: 0.3,
+    firstSpeaker: 'FIRST_SPEAKER_USER',
+    medium: { "twilio": {} }
 };
 
 async function createUltravoxCall() {
@@ -681,9 +672,7 @@ async function createUltravoxCall() {
 
     console.log('Creating Ultravox call with config:', {
         ...ULTRAVOX_CALL_CONFIG,
-        systemPrompt: '(hidden)',
-        voice: ULTRAVOX_CALL_CONFIG.voice,
-        model: ULTRAVOX_CALL_CONFIG.model
+        systemPrompt: '(hidden)'
     });
     
     return new Promise((resolve, reject) => {
@@ -691,10 +680,8 @@ async function createUltravoxCall() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-Key': ULTRAVOX_API_KEY,
-                'Accept': 'application/json'
-            },
-            timeout: 30000 // 30 second timeout
+                'X-API-Key': ULTRAVOX_API_KEY
+            }
         });
 
         let data = '';
@@ -703,14 +690,25 @@ async function createUltravoxCall() {
             console.log('Ultravox API response status:', response.statusCode);
             console.log('Ultravox API response headers:', response.headers);
 
-            if (response.statusCode !== 200) {
-                console.error('Ultravox API error:', response.statusCode);
-                reject(new Error(`Ultravox API returned status ${response.statusCode}`));
-                return;
-            }
+            response.on('data', chunk => {
+                data += chunk;
+                console.log('Received chunk:', chunk.toString());
+            });
             
-            response.on('data', chunk => data += chunk);
             response.on('end', () => {
+                console.log('Raw response data:', data);
+                
+                if (response.statusCode !== 200) {
+                    console.error('Ultravox API error:', response.statusCode);
+                    try {
+                        const errorData = JSON.parse(data);
+                        reject(new Error(`Ultravox API error: ${errorData.error || errorData.message || 'Unknown error'}`));
+                    } catch (e) {
+                        reject(new Error(`Ultravox API returned status ${response.statusCode}: ${data}`));
+                    }
+                    return;
+                }
+                
                 try {
                     const parsedData = JSON.parse(data);
                     console.log('Ultravox response:', parsedData);
@@ -738,9 +736,7 @@ async function createUltravoxCall() {
             reject(new Error('Request timed out'));
         });
         
-        const payload = JSON.stringify(ULTRAVOX_CALL_CONFIG);
-        console.log('Ultravox request payload:', payload);
-        request.write(payload);
+        request.write(JSON.stringify(ULTRAVOX_CALL_CONFIG));
         request.end();
     });
 }
@@ -784,10 +780,10 @@ app.post('/make-call', async (req, res) => {
     const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
     console.log('Twilio config:', {
       from: TWILIO_PHONE_NUMBER,
-      to: formattedPhoneNumber,
-      statusCallback: process.env.NODE_ENV === 'production' 
-        ? 'https://jtxviewer.onrender.com/webhook'
-        : 'http://localhost:3000/webhook'
+      to: formattedPhoneNumber
+      // statusCallback: process.env.NODE_ENV === 'production' 
+      //   ? 'https://jtxviewer.onrender.com/webhook'
+      //   : 'http://localhost:3000/webhook'
     });
 
     const twiml = `<Response><Connect><Stream url="${ultravoxResponse.joinUrl}"/></Connect></Response>`;
@@ -799,9 +795,9 @@ app.post('/make-call', async (req, res) => {
       from: TWILIO_PHONE_NUMBER,
       statusCallback: process.env.NODE_ENV === 'production' 
         ? 'https://jtxviewer.onrender.com/webhook'
-        : 'http://localhost:3000/webhook',
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      statusCallbackMethod: 'POST'
+        : 'http://localhost:3000/webhook'
+      // statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      // statusCallbackMethod: 'POST'
     });
 
     console.log('Call initiated:', call.sid);
