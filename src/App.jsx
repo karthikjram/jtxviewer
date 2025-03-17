@@ -329,6 +329,43 @@ const App = () => {
       </header>
 
       <main className="max-w-[1920px] mx-auto">
+        {/* Bottom Panel - Make Call */}
+        <div className="bg-white border-b border-slate-200 p-4">
+          <div className="max-w-lg mx-auto">
+            {callError && (
+              <div className="mb-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">
+                {callError}
+              </div>
+            )}
+            <div className="flex gap-4">
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="Enter phone number"
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+              <button
+                onClick={handleMakeCall}
+                disabled={isCallLoading || !phoneNumber}
+                className={`px-6 py-2 rounded-lg font-medium ${
+                  isCallLoading || !phoneNumber
+                    ? 'bg-slate-300 cursor-not-allowed'
+                    : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                }`}
+              >
+                {isCallLoading ? (
+                  <div className="w-5 h-5 relative">
+                    <div className="w-full h-full rounded-full border-2 border-t-white border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                  </div>
+                ) : (
+                  'Make Call'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="w-8 h-8 relative">
@@ -353,7 +390,7 @@ const App = () => {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col h-[calc(100vh-4rem)]">
+          <div className="flex flex-col h-[calc(100vh-12rem)]">
             <div className="flex flex-1 min-h-0">
               {/* Left Panel - Call List */}
               <div className="w-1/3 border-r border-slate-200 overflow-y-auto">
@@ -372,43 +409,6 @@ const App = () => {
               {/* Right Panel - Call Details */}
               <div className="w-2/3 overflow-y-auto p-8">
                 {selectedCall && <CallCard call={selectedCall} isSelected={true} />}
-              </div>
-            </div>
-
-            {/* Bottom Panel - Make Call */}
-            <div className="border-t border-slate-200 bg-white p-4">
-              <div className="max-w-lg mx-auto">
-                {callError && (
-                  <div className="mb-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">
-                    {callError}
-                  </div>
-                )}
-                <div className="flex gap-4">
-                  <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="Enter phone number"
-                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                  <button
-                    onClick={handleMakeCall}
-                    disabled={isCallLoading || !phoneNumber}
-                    className={`px-6 py-2 rounded-lg font-medium ${
-                      isCallLoading || !phoneNumber
-                        ? 'bg-slate-300 cursor-not-allowed'
-                        : 'bg-indigo-500 hover:bg-indigo-600 text-white'
-                    }`}
-                  >
-                    {isCallLoading ? (
-                      <div className="w-5 h-5 relative">
-                        <div className="w-full h-full rounded-full border-2 border-t-white border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-                      </div>
-                    ) : (
-                      'Make Call'
-                    )}
-                  </button>
-                </div>
               </div>
             </div>
           </div>

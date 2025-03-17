@@ -679,8 +679,15 @@ app.post('/make-call', async (req, res) => {
     return res.status(400).json({ error: 'Phone number is required' });
   }
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-    return res.status(500).json({ error: 'Twilio configuration is missing' });
+  // Check each Twilio config separately
+  if (!TWILIO_ACCOUNT_SID) {
+    return res.status(500).json({ error: 'Twilio Account SID is missing' });
+  }
+  if (!TWILIO_AUTH_TOKEN) {
+    return res.status(500).json({ error: 'Twilio Auth Token is missing' });
+  }
+  if (!TWILIO_PHONE_NUMBER) {
+    return res.status(500).json({ error: 'Twilio Phone Number is missing' });
   }
 
   try {
@@ -699,7 +706,9 @@ app.post('/make-call', async (req, res) => {
     res.json({ callSid: call.sid });
   } catch (error) {
     console.error('Error making call:', error);
-    res.status(500).json({ error: 'Failed to initiate call' });
+    // Return more specific error message
+    const errorMessage = error.message || 'Failed to initiate call';
+    res.status(500).json({ error: errorMessage });
   }
 });
 
