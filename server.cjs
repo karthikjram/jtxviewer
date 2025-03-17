@@ -699,7 +699,7 @@ async function createUltravoxCall() {
             response.on('end', () => {
                 console.log('Raw response data:', data);
                 
-                if (response.statusCode !== 200) {
+                if (response.statusCode !== 200 && response.statusCode !== 201) {
                     console.error('Ultravox API error:', response.statusCode);
                     try {
                         const errorData = JSON.parse(data);
