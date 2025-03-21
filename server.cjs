@@ -488,6 +488,7 @@ Be consistent, precise, and strictly concise.`
 // Webhook endpoint
 app.post('/webhook', async (req, res) => {
   const { event, call } = req.body;
+  console.log('Webhook req.body:', req.body);
   
   if (event === 'call.ended') {
     console.log('Call ended:', call);
